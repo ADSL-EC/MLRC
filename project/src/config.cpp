@@ -41,8 +41,27 @@ namespace ECProject
     if (CodeType == "gLRC")
     {
       assert((GlrcRepairMode == "phase1" || GlrcRepairMode == "phase2" ||
-              GlrcRepairMode == "pipeline" || GlrcRepairMode == "hybrid") &&
-             "Error: GlrcRepairMode must be phase1, phase2, pipeline, or hybrid");
+              GlrcRepairMode == "pipeline" || GlrcRepairMode == "hybrid" ||
+              GlrcRepairMode == "hmbr") &&
+             "Error: GlrcRepairMode must be phase1, phase2, pipeline, hybrid, or hmbr");
+      if (GlrcRepairMode != "phase1")
+      {
+        assert(GlrcShardCount > 0 && BlockSize % GlrcShardCount == 0 &&
+               "Error: BlockSize must be divisible by GlrcShardCount");
+      }
+      if (GlrcRepairMode == "hmbr")
+      {
+        assert(GlrcShardCount >= 2 &&
+               "Error: HMBR-LRC requires GlrcShardCount >= 2");
+        assert(NodeBlockBandwidthMBps > 0.0 &&
+               "Error: HMBR-LRC requires positive NodeBlockBandwidthMBps");
+        assert((GlrcHmbrEquationPolicy == "global-first" ||
+                GlrcHmbrEquationPolicy == "rule-based" ||
+                GlrcHmbrEquationPolicy == "local-then-global" ||
+                GlrcHmbrEquationPolicy == "local-first" ||
+                GlrcHmbrEquationPolicy == "ilp-min-helper") &&
+               "Error: invalid GlrcHmbrEquationPolicy");
+      }
     }
     assert(DatanodeNumPerCluster > 0 && "Error: DatanodeNumPerCluster must be greater than 0");
     assert(ClusterNum > 0 && "Error: ClusterNum must be greater than 0");
@@ -134,6 +153,10 @@ namespace ECProject
       GlrcPipelineWindow = std::stoi(elem->GetText());
     if (auto elem = root->FirstChildElement("GlrcHybridP"))
       GlrcHybridP = trim_config_text(elem->GetText());
+    if (auto elem = root->FirstChildElement("GlrcHmbrP"))
+      GlrcHmbrP = trim_config_text(elem->GetText());
+    if (auto elem = root->FirstChildElement("GlrcHmbrEquationPolicy"))
+      GlrcHmbrEquationPolicy = trim_config_text(elem->GetText());
     if (auto elem = root->FirstChildElement("GlrcPhase2WriteBack"))
     {
       std::string v = trim_config_text(elem->GetText());
@@ -222,6 +245,8 @@ namespace ECProject
       std::cout << "  GlrcPipelineWindow: " << GlrcPipelineWindow
                 << (GlrcPipelineWindow == 0 ? " (full pipeline, W=GlrcShardCount)" : "") << std::endl;
       std::cout << "  GlrcHybridP: " << GlrcHybridP << std::endl;
+      std::cout << "  GlrcHmbrP: " << GlrcHmbrP << std::endl;
+      std::cout << "  GlrcHmbrEquationPolicy: " << GlrcHmbrEquationPolicy << std::endl;
       std::cout << "  GlrcPhase2WriteBack: " << (GlrcPhase2WriteBack ? "true" : "false") << std::endl;
     }
   }

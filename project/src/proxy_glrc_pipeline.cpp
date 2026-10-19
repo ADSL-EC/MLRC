@@ -3,6 +3,7 @@
 #include "glrc_pipeline_plan.h"
 #include "glrc_pipeline_codec.h"
 #include "link_bandwidth.h"
+#include "recovery_stream.h"
 #include "unilrc_encoder.h"
 #include <asio.hpp>
 #include <algorithm>
@@ -1540,6 +1541,7 @@ bool ProxyImpl::glrcIlpPipelineLocalDirectRecovery(const proxy_proto::RecoveryRe
     asio::io_context write_io;
     asio::ip::tcp::socket write_socket(write_io);
     std::thread recovery_grpc_thread;
+    grpc::Status recovery_grpc_status;
     grpc::ClientContext recovery_context;
     datanode_proto::MergeParityInfo recovery_info;
     recovery_info.set_block_key(std::string(failed_key));
@@ -1550,10 +1552,15 @@ bool ProxyImpl::glrcIlpPipelineLocalDirectRecovery(const proxy_proto::RecoveryRe
     recovery_info.set_recovery_size(
         full_block_write ? 0 : shard_count * stripe_len);
     recovery_info.set_recovery_defer_fsync(!full_block_write);
+    recovery_info.set_recovery_commit_token(
+        recovery_request->hybrid_commit_token().empty()
+            ? ("pipeline-local-" + std::to_string(exchange_epoch) + "-" +
+               std::to_string(chain_id))
+            : recovery_request->hybrid_commit_token());
     if (!full_block_write)
     {
-      recovery_info.set_recovery_commit_token(recovery_request->hybrid_commit_token());
-      recovery_info.set_recovery_commit_parts(2);
+      recovery_info.set_recovery_commit_parts(
+          std::max(2, recovery_request->range_commit_parts()));
     }
     recovery_info.set_proxy_ip(m_ip);
     recovery_info.set_proxy_port(m_port);
@@ -1567,17 +1574,34 @@ bool ProxyImpl::glrcIlpPipelineLocalDirectRecovery(const proxy_proto::RecoveryRe
     }
     recovery_context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(120));
     datanode_proto::datanodeService::Stub *dn_stub = dn_it->second.get();
-    recovery_grpc_thread = std::thread([dn_stub, &recovery_context, &recovery_info, &recovery_result]() {
-      (void)dn_stub->handleRecoveryBreakdown(&recovery_context, recovery_info, &recovery_result);
+    recovery_grpc_thread = std::thread([dn_stub, &recovery_context, &recovery_info,
+                                        &recovery_result, &recovery_grpc_status]() {
+      recovery_grpc_status =
+          dn_stub->handleRecoveryBreakdown(&recovery_context, recovery_info,
+                                           &recovery_result);
     });
     {
       asio::ip::tcp::resolver resolver(write_io);
       asio::error_code con_error;
       asio::connect(write_socket,
-                    resolver.resolve({std::string(rep_ip), std::to_string(rep_port + ECProject::DATANODE_PORT_SHIFT)}),
+                    resolver.resolve({std::string(rep_ip), std::to_string(
+                        rep_port + ECProject::DATANODE_RECOVERY_PORT_SHIFT)}),
                     con_error);
+      if (!con_error)
+      {
+        const int recovery_size =
+            recovery_info.recovery_size() > 0
+                ? recovery_info.recovery_size()
+                : m_sys_config->BlockSize;
+        const std::string stream_key = recovery_stream_key(
+            recovery_info.block_key(), recovery_info.block_id(),
+            recovery_info.recovery_offset(), recovery_size,
+            recovery_info.recovery_commit_token());
+        write_recovery_stream_key(write_socket, stream_key, con_error);
+      }
       if (con_error)
       {
+        recovery_context.TryCancel();
         if (recovery_grpc_thread.joinable())
           recovery_grpc_thread.join();
         close_pipeline_acceptor(acceptor);
@@ -1705,6 +1729,12 @@ bool ProxyImpl::glrcIlpPipelineLocalDirectRecovery(const proxy_proto::RecoveryRe
     close_pipeline_socket(in_socket);
     if (recovery_grpc_thread.joinable())
       recovery_grpc_thread.join();
+    if (!recovery_grpc_status.ok() || !recovery_result.message())
+    {
+      set_pipeline_error("pipeline local sink datanode write failed: " +
+                         recovery_grpc_status.error_message());
+      return false;
+    }
 
     const auto t1 = std::chrono::high_resolution_clock::now();
     const double write_sec = std::chrono::duration<double>(t1 - write_begin).count();
@@ -2246,10 +2276,15 @@ bool ProxyImpl::glrcIlpPipelineHubRecovery(const proxy_proto::RecoveryRequest *r
     ws->recovery_info.set_recovery_size(
         full_block_write ? 0 : shard_count * stripe_len);
     ws->recovery_info.set_recovery_defer_fsync(!full_block_write);
+    ws->recovery_info.set_recovery_commit_token(
+        recovery_request->hybrid_commit_token().empty()
+            ? ("pipeline-hub-" + std::to_string(exchange_epoch) + "-" +
+               std::to_string(failed_ids[i]))
+            : recovery_request->hybrid_commit_token());
     if (!full_block_write)
     {
-      ws->recovery_info.set_recovery_commit_token(recovery_request->hybrid_commit_token());
-      ws->recovery_info.set_recovery_commit_parts(2);
+      ws->recovery_info.set_recovery_commit_parts(
+          std::max(2, recovery_request->range_commit_parts()));
     }
     ws->recovery_info.set_proxy_ip(m_ip);
     ws->recovery_info.set_proxy_port(m_port);
@@ -2277,13 +2312,27 @@ bool ProxyImpl::glrcIlpPipelineHubRecovery(const proxy_proto::RecoveryRequest *r
     asio::ip::tcp::resolver resolver(ws->io);
     asio::error_code connect_ec;
     asio::connect(ws->socket,
-                  resolver.resolve({rep_ip, std::to_string(rep_port + ECProject::DATANODE_PORT_SHIFT)}),
+                  resolver.resolve({rep_ip, std::to_string(
+                      rep_port + ECProject::DATANODE_RECOVERY_PORT_SHIFT)}),
                   connect_ec);
+    if (!connect_ec)
+    {
+      const int recovery_size =
+          ws->recovery_info.recovery_size() > 0
+              ? ws->recovery_info.recovery_size()
+              : m_sys_config->BlockSize;
+      const std::string stream_key = recovery_stream_key(
+          ws->recovery_info.block_key(), ws->recovery_info.block_id(),
+          ws->recovery_info.recovery_offset(), recovery_size,
+          ws->recovery_info.recovery_commit_token());
+      write_recovery_stream_key(ws->socket, stream_key, connect_ec);
+    }
     if (connect_ec)
     {
       hub_fail_msg = "pipeline hub persistent write connect failed target=" + node_ip_port + " " +
                      connect_ec.message();
       hub_failed.store(true);
+      ws->grpc_context.TryCancel();
       asio::error_code ignore_ec;
       ws->socket.close(ignore_ec);
       write_streams.push_back(std::move(ws));

@@ -276,6 +276,12 @@ message RecoveryRequest{
   reserved 75;
   /** Shared by the Phase2 prefix and Pipeline tail of one Hybrid attempt. */
   string hybrid_commit_token = 76;
+  /** HMBR-LRC conventional lane: centralized Phase1 over one byte range. */
+  bool glrc_ilp_phase1_partial = 77;
+  int32 phase1_range_offset = 78;
+  int32 phase1_range_size = 79;
+  /** Number of disjoint range writers participating in one atomic publish. */
+  int32 range_commit_parts = 80;
 }
 
 message MultipleRecoveryRequest{

@@ -436,6 +436,45 @@ namespace ECProject
     return plan.success;
   }
 
+  bool glrc_solve_repair_global_first(int k, int r, int z,
+                                      const std::vector<int> &failed_block_ids,
+                                      GlrcIlpRepairPlan &plan)
+  {
+    plan = GlrcIlpRepairPlan();
+    plan.failed_block_ids = failed_block_ids;
+    if (failed_block_ids.empty())
+    {
+      plan.error_message = "empty failure set";
+      return false;
+    }
+
+    const auto t0 = std::chrono::high_resolution_clock::now();
+    std::vector<GlrcEquation> all_equations;
+    std::vector<int> candidate_indices;
+    glrc_build_recovery_equations(k, r, z, failed_block_ids, all_equations,
+                                  candidate_indices);
+    const int f = static_cast<int>(failed_block_ids.size());
+    if (static_cast<int>(candidate_indices.size()) < f)
+    {
+      plan.error_message = "not enough candidate equations";
+    }
+    else
+    {
+      const std::unordered_set<int> failed_set(failed_block_ids.begin(),
+                                               failed_block_ids.end());
+      if (!try_global_first_fallback(f, k, r, z, failed_set, failed_block_ids,
+                                     all_equations, candidate_indices, plan))
+        plan.error_message =
+            "global-first could not find decodable equation set";
+    }
+
+    const auto t1 = std::chrono::high_resolution_clock::now();
+    plan.ilp_solve_time_sec =
+        std::chrono::duration_cast<std::chrono::duration<double>>(t1 - t0)
+            .count();
+    return plan.success;
+  }
+
   bool glrc_solve_repair_local_first(int k, int r, int z, const std::vector<int> &failed_block_ids,
                                      GlrcIlpRepairPlan &plan)
   {
@@ -535,6 +574,9 @@ namespace ECProject
       return "local-then-global";
     if (policy == "local-first")
       return "local-first";
+    if (policy == "global-first" || policy == "hmbr-rule" ||
+        policy == "rule-based")
+      return "global-first";
     if (policy == "ilp-min-helper" || policy == "ilp" || policy.empty())
       return "ilp-min-helper";
     return policy;
@@ -548,6 +590,8 @@ namespace ECProject
       return glrc_solve_repair_local_then_global(k, r, z, failed_block_ids, plan);
     if (normalized == "local-first")
       return glrc_solve_repair_local_first(k, r, z, failed_block_ids, plan);
+    if (normalized == "global-first")
+      return glrc_solve_repair_global_first(k, r, z, failed_block_ids, plan);
     if (normalized == "ilp-min-helper")
       return glrc_solve_repair_ilp(k, r, z, failed_block_ids, plan);
     plan = GlrcIlpRepairPlan();

@@ -222,7 +222,7 @@ message RecoveryReply {
   string equation_policy = 14;
   repeated int32 partition_shard_counts = 15;
   int32 max_partition_shard_count = 16;
-  /** Hybrid split: Phase2 shards [0, hybrid_p); pipeline [hybrid_p, S). -1 if not hybrid. */
+  /** Hybrid: Phase2 prefix size. HMBR-LRC: dynamically selected RP prefix size. */
   int32 hybrid_p = 17;
   /** Continuous optimum p* before discretization (hybrid auto/fixed only). */
   double hybrid_p_continuous = 18;
@@ -242,6 +242,16 @@ message RecoveryReply {
   double hybrid_commit_time = 29;
   /** Max proxy-side Phase2 streaming wall, including helper, peer exchange and write join. */
   double phase2_stream_wall_time = 30;
+  int32 hmbr_rp_shards = 31;
+  double hmbr_rp_shards_continuous = 32;
+  int32 hmbr_conv_shards = 33;
+  int32 hmbr_conv_lanes = 34;
+  double hmbr_rp_estimated_time = 35;
+  double hmbr_conv_estimated_time = 36;
+  double hmbr_conv_wall_time = 37;
+  double hmbr_rp_wall_time = 38;
+  double hmbr_commit_time = 39;
+  double hmbr_p_select_time = 40;
 }
 
 message StripePos {

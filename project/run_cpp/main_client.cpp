@@ -638,7 +638,7 @@ static void print_glrc_trial_metrics(const ECProject::GlrcMultiRecoveryMetrics &
     std::cout << "  network_transfer_time:   " << m.network_time;
     if (m.repair_mode == "phase2")
       std::cout << "  (max helper-stream span across partitions)";
-    else if (m.repair_mode == "pipeline")
+    else if (m.repair_mode == "pipeline" || m.repair_mode == "hmbr")
       std::cout << "  (data-plane wall-clock)";
     std::cout << std::endl;
     if (m.repair_mode == "phase2")
@@ -648,10 +648,24 @@ static void print_glrc_trial_metrics(const ECProject::GlrcMultiRecoveryMetrics &
     std::cout << "  decode_time:             " << m.decode_time << std::endl;
     std::cout << "  disk_write_time:         " << m.disk_write_time << "  (overlapping work total)" << std::endl;
     std::cout << "  repair_time:             " << m.total_time;
-    if (m.repair_mode == "pipeline")
+    if (m.repair_mode == "pipeline" || m.repair_mode == "hmbr")
       std::cout << "  (data-plane wall-clock)";
     std::cout << std::endl;
-    if (m.repair_mode == "hybrid")
+    if (m.repair_mode == "hmbr")
+    {
+        std::cout << "  --- HMBR-LRC lane breakdown ---" << std::endl;
+        std::cout << "  rp_shards:               " << m.hmbr_rp_shards
+                  << "  (continuous=" << m.hmbr_rp_shards_continuous << ")" << std::endl;
+        std::cout << "  conventional_shards:     " << m.hmbr_conv_shards << std::endl;
+        std::cout << "  conventional_lanes:      " << m.hmbr_conv_lanes << std::endl;
+        std::cout << "  p_select_time:           " << m.hmbr_p_select_time << std::endl;
+        std::cout << "  estimated_rp_time:       " << m.hmbr_rp_estimated_time << std::endl;
+        std::cout << "  estimated_conv_time:     " << m.hmbr_conv_estimated_time << std::endl;
+        std::cout << "  measured_rp_wall:        " << m.hmbr_rp_wall_time << std::endl;
+        std::cout << "  measured_conv_wall:      " << m.hmbr_conv_wall_time << std::endl;
+        std::cout << "  atomic_publish:          " << m.hmbr_commit_time << std::endl;
+    }
+    else if (m.repair_mode == "hybrid")
     {
         std::cout << "  hybrid_p:                " << m.hybrid_p;
         if (m.hybrid_p_continuous > 0.0 || m.hybrid_p == 0)
@@ -1140,7 +1154,8 @@ static int run_glrc_repair_test(ECProject::Client &client, const ECProject::Conf
     std::mt19937 warmup_rng(random_seed ^ 0x9e3779b9U);
     const bool warmup_enabled = [&]() {
         if (skip_warmup ||
-            (config->GlrcRepairMode != "pipeline" && config->GlrcRepairMode != "phase2"))
+            (config->GlrcRepairMode != "pipeline" && config->GlrcRepairMode != "phase2" &&
+             config->GlrcRepairMode != "hmbr"))
             return false;
         if (const char *w = std::getenv("GLRC_WARMUP"))
             return w[0] != '0';
@@ -1149,7 +1164,7 @@ static int run_glrc_repair_test(ECProject::Client &client, const ECProject::Conf
     if (warmup_enabled)
     {
         std::vector<int> warmup_failed;
-        if (config->GlrcRepairMode == "phase2")
+        if (config->GlrcRepairMode == "phase2" || config->GlrcRepairMode == "hmbr")
         {
             // Exercise the same number of partition proxies, helper streams,
             // peer exchanges, and decode workers as the measured trials.
@@ -1243,7 +1258,7 @@ static int run_glrc_repair_test(ECProject::Client &client, const ECProject::Conf
         sum_decode += m.decode_time;
         sum_write += m.disk_write_time;
         sum_helpers += m.helper_block_count;
-        if (m.repair_mode == "hybrid")
+        if (m.repair_mode == "hybrid" || m.repair_mode == "hmbr")
         {
             hybrid_success_count++;
             sum_hybrid_p += m.hybrid_p;
@@ -1263,7 +1278,10 @@ static int run_glrc_repair_test(ECProject::Client &client, const ECProject::Conf
 
     std::cout << "\n========== gLRC repair batch summary ==========" << std::endl;
     std::cout << "  mode=" << config->GlrcRepairMode
-              << " policy=" << config->GlrcEquationPolicy
+              << " policy="
+              << (config->GlrcRepairMode == "hmbr"
+                      ? config->GlrcHmbrEquationPolicy
+                      : config->GlrcEquationPolicy)
               << " failure_mode=" << failure_mode << std::endl;
     std::cout << "  f=" << fail_count << " trials=" << trial_count
               << " success=" << success_count << std::endl;
@@ -1278,19 +1296,23 @@ static int run_glrc_repair_test(ECProject::Client &client, const ECProject::Conf
         std::cout << "  avg_decode_time:           " << (sum_decode / cnt) << " s" << std::endl;
         std::cout << "  avg_disk_write_time:       " << (sum_write / cnt) << " s" << std::endl;
         std::cout << "  avg_repair_time:           " << (sum_total / cnt) << " s";
-        if (config->GlrcRepairMode == "pipeline")
+        if (config->GlrcRepairMode == "pipeline" || config->GlrcRepairMode == "hmbr")
           std::cout << "  (data-plane wall-clock)";
         std::cout << std::endl;
         std::cout << "  avg_helper_blocks:         " << (sum_helpers / cnt) << std::endl;
-        if (config->GlrcRepairMode == "hybrid" && hybrid_success_count > 0)
+        if ((config->GlrcRepairMode == "hybrid" || config->GlrcRepairMode == "hmbr") &&
+            hybrid_success_count > 0)
         {
             const double hp_cnt = static_cast<double>(hybrid_success_count);
-            std::cout << "  --- hybrid p stats (n=" << hybrid_success_count << ") ---" << std::endl;
-            std::cout << "  avg_hybrid_p:              " << (sum_hybrid_p / hp_cnt) << std::endl;
-            std::cout << "  avg_hybrid_p_continuous:   " << (sum_hybrid_p_continuous / hp_cnt) << std::endl;
-            std::cout << "  min_hybrid_p:              " << min_hybrid_p << std::endl;
-            std::cout << "  max_hybrid_p:              " << max_hybrid_p << std::endl;
-            std::cout << "  hybrid_p_per_trial:        ";
+            const std::string split_name =
+                config->GlrcRepairMode == "hmbr" ? "hmbr_rp_shards" : "hybrid_p";
+            std::cout << "  --- split stats (n=" << hybrid_success_count << ") ---" << std::endl;
+            std::cout << "  avg_" << split_name << ": " << (sum_hybrid_p / hp_cnt) << std::endl;
+            std::cout << "  avg_" << split_name << "_continuous: "
+                      << (sum_hybrid_p_continuous / hp_cnt) << std::endl;
+            std::cout << "  min_" << split_name << ": " << min_hybrid_p << std::endl;
+            std::cout << "  max_" << split_name << ": " << max_hybrid_p << std::endl;
+            std::cout << "  " << split_name << "_per_trial: ";
             for (size_t i = 0; i < hybrid_p_samples.size(); i++)
                 std::cout << (i ? ", " : "") << hybrid_p_samples[i];
             std::cout << std::endl;

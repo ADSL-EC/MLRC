@@ -57,6 +57,10 @@ namespace ECProject
   bool glrc_solve_repair_local_then_global(int k, int r, int z, const std::vector<int> &failed_block_ids,
                                            GlrcIlpRepairPlan &plan);
 
+  /** Rule-based HMBR-LRC policy: maximize global equations, then fall back to local equations. */
+  bool glrc_solve_repair_global_first(int k, int r, int z, const std::vector<int> &failed_block_ids,
+                                      GlrcIlpRepairPlan &plan);
+
   /**
    * Local-first repair equation selection:
    * try combinations with as many local equations as possible first; add global equations only
@@ -65,7 +69,7 @@ namespace ECProject
   bool glrc_solve_repair_local_first(int k, int r, int z, const std::vector<int> &failed_block_ids,
                                      GlrcIlpRepairPlan &plan);
 
-  /** Normalize config value to "local-then-global", "local-first", or "ilp-min-helper". */
+  /** Normalize a configured equation-policy name. */
   std::string glrc_normalize_equation_policy(const std::string &policy);
 
   /** Dispatch by GlrcEquationPolicy (phase1/phase2 share the same equation planner). */

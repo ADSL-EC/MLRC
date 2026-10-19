@@ -11,10 +11,19 @@
 #include <sys/mman.h>
 #include "unilrc_encoder.h"
 #include "link_bandwidth.h"
+#include "recovery_stream.h"
 #include <chrono>
 #include <cstdlib>
+#include <atomic>
 
 namespace {
+std::atomic<uint64_t> g_recovery_stream_epoch{1};
+
+std::string next_recovery_stream_token()
+{
+  return "route-" + std::to_string(g_recovery_stream_epoch.fetch_add(1));
+}
+
 void free_aligned_buf(void *p)
 {
   if (p)
@@ -245,7 +254,8 @@ namespace ECProject
       asio::ip::tcp::socket socket(io_context);
       asio::ip::tcp::resolver resolver(io_context);
       asio::error_code con_error;
-      asio::connect(socket, resolver.resolve({std::string(ip), std::to_string(port + ECProject::DATANODE_PORT_SHIFT)}), con_error);
+      asio::connect(socket, resolver.resolve(
+          {std::string(ip), std::to_string(port + ECProject::DATANODE_PORT_SHIFT)}), con_error);
       if (!con_error && IF_DEBUG)
       {
         std::cout << "Connect to " << ip << ":" << port + ECProject::DATANODE_PORT_SHIFT << " success! block_key: " << block_key << " block_id: " << block_id << " slice_size: " << slice_size << " slice_offset: " << slice_offset << " is_serialized: " << is_serialized << std::endl;
@@ -291,6 +301,8 @@ namespace ECProject
       recovery_info.set_block_id(block_id);
       recovery_info.set_proxy_ip(m_ip);
       recovery_info.set_proxy_port(m_port);
+      const std::string route_token = next_recovery_stream_token();
+      recovery_info.set_recovery_commit_token(route_token);
       std::string node_ip_port = std::string(ip) + ":" + std::to_string(port);
       std::thread notify_datanode_thread([this, &context, &recovery_info, &result, &node_ip_port, &block_key, &block_id]()
       {
@@ -307,22 +319,36 @@ namespace ECProject
       asio::ip::tcp::socket socket(io_context);
       asio::ip::tcp::resolver resolver(io_context);
       asio::error_code con_error;
-      asio::connect(socket, resolver.resolve({std::string(ip), std::to_string(port + ECProject::DATANODE_PORT_SHIFT)}), con_error);
+      asio::connect(socket, resolver.resolve(
+          {std::string(ip), std::to_string(port + ECProject::DATANODE_RECOVERY_PORT_SHIFT)}), con_error);
       if (con_error)
       {
-        std::cout << "[RecoveryToDatanode] Connect to " << ip << ":" << port + ECProject::DATANODE_PORT_SHIFT
+        std::cout << "[RecoveryToDatanode] Connect to " << ip << ":"
+                  << port + ECProject::DATANODE_RECOVERY_PORT_SHIFT
                   << " failed! block_key: " << block_key << " block_id: " << block_id << std::endl;
         notify_datanode_thread.join();
         return false;
       }
-      std::cout << "[RecoveryToDatanode] Connect to " << ip << ":" << port + ECProject::DATANODE_PORT_SHIFT
+      std::cout << "[RecoveryToDatanode] Connect to " << ip << ":"
+                << port + ECProject::DATANODE_RECOVERY_PORT_SHIFT
                 << " success! block_key: " << block_key << " block_id: " << block_id << std::endl;
+      const std::string stream_key =
+          recovery_stream_key(block_key, block_id, 0, m_sys_config->BlockSize,
+                              route_token);
+      if (!write_recovery_stream_key(socket, stream_key, error))
+      {
+        context.TryCancel();
+        notify_datanode_thread.join();
+        return false;
+      }
       tcp_write_with_shared_bandwidth(socket, buf, m_sys_config->BlockSize,
                                       egressBandwidthForDatanodeWrite(ip, port), error);
       asio::error_code ignore_ec;
       socket.shutdown(asio::ip::tcp::socket::shutdown_both, ignore_ec);
       socket.close(ignore_ec);
       notify_datanode_thread.join();
+      if (error || !result.message())
+        return false;
     }
     catch (const std::exception &e)
     {
@@ -344,6 +370,8 @@ namespace ECProject
       recovery_info.set_block_id(block_id);
       recovery_info.set_proxy_ip(m_ip);
       recovery_info.set_proxy_port(m_port);
+      const std::string route_token = next_recovery_stream_token();
+      recovery_info.set_recovery_commit_token(route_token);
       std::string node_ip_port = std::string(ip) + ":" + std::to_string(port);
       auto dn_it = m_datanode_ptrs.find(node_ip_port);
       if (dn_it == m_datanode_ptrs.end() || !dn_it->second)
@@ -354,11 +382,14 @@ namespace ECProject
       }
       std::chrono::high_resolution_clock::time_point grpc_notify_time;
       datanode_proto::datanodeService::Stub *dn_stub = dn_it->second.get();
-      std::thread notify_datanode_thread([dn_stub, &context, &recovery_info, &result, &grpc_notify_time, &block_key, &block_id]()
+      grpc::Status grpc_status;
+      context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(180));
+      std::thread notify_datanode_thread([dn_stub, &context, &recovery_info, &result, &grpc_status,
+                                          &grpc_notify_time, &block_key, &block_id]()
       {
         grpc_notify_time = std::chrono::high_resolution_clock::now();
-        grpc::Status stat = dn_stub->handleRecoveryBreakdown(&context, recovery_info, &result);
-        if (!stat.ok())
+        grpc_status = dn_stub->handleRecoveryBreakdown(&context, recovery_info, &result);
+        if (!grpc_status.ok())
         {
           std::cout << "[RecoveryToDatanode] notify datanode failed! block_key: " << block_key << " block_id: " << block_id << std::endl;
         }
@@ -369,17 +400,30 @@ namespace ECProject
       asio::ip::tcp::socket socket(io_context);
       asio::ip::tcp::resolver resolver(io_context);
       asio::error_code con_error;
-      asio::connect(socket, resolver.resolve({std::string(ip), std::to_string(port + ECProject::DATANODE_PORT_SHIFT)}), con_error);
+      asio::connect(socket, resolver.resolve(
+          {std::string(ip), std::to_string(port + ECProject::DATANODE_RECOVERY_PORT_SHIFT)}), con_error);
       std::chrono::high_resolution_clock::time_point begin = std::chrono::high_resolution_clock::now(); // start time for network
       if (con_error)
       {
-        std::cout << "[RecoveryToDatanode] Connect to " << ip << ":" << port + ECProject::DATANODE_PORT_SHIFT
+        std::cout << "[RecoveryToDatanode] Connect to " << ip << ":"
+                  << port + ECProject::DATANODE_RECOVERY_PORT_SHIFT
                   << " failed! block_key: " << block_key << " block_id: " << block_id << std::endl;
+        context.TryCancel();
         notify_datanode_thread.join();
         return false;
       }
-      std::cout << "[RecoveryToDatanode] Connect to " << ip << ":" << port + ECProject::DATANODE_PORT_SHIFT
+      std::cout << "[RecoveryToDatanode] Connect to " << ip << ":"
+                << port + ECProject::DATANODE_RECOVERY_PORT_SHIFT
                 << " success! block_key: " << block_key << " block_id: " << block_id << std::endl;
+      const std::string stream_key =
+          recovery_stream_key(block_key, block_id, 0, m_sys_config->BlockSize,
+                              route_token);
+      if (!write_recovery_stream_key(socket, stream_key, error))
+      {
+        context.TryCancel();
+        notify_datanode_thread.join();
+        return false;
+      }
       tcp_write_with_shared_bandwidth(socket, buf, m_sys_config->BlockSize,
                                       egressBandwidthForDatanodeWrite(ip, port), error);
       asio::error_code ignore_ec;
@@ -388,6 +432,8 @@ namespace ECProject
       std::chrono::high_resolution_clock::time_point end = std::chrono::high_resolution_clock::now(); // end time for network
       *network_time = std::chrono::duration_cast<std::chrono::duration<double>>(end - begin).count();
       notify_datanode_thread.join();
+      if (error || !grpc_status.ok() || !result.message())
+        return false;
       *disk_io_time = result.disk_io_end_time() - result.disk_io_start_time();
       *network_time += result.grpc_start_time() - std::chrono::duration_cast<std::chrono::duration<double>>(grpc_notify_time.time_since_epoch()).count();
   
@@ -403,7 +449,9 @@ namespace ECProject
 
   bool ProxyImpl::RecoveryToDatanodeStripeBreakdown(const char *block_key, int block_id, const char *buf,
                                                     const char *ip, int port, int recovery_offset, int recovery_size,
-                                                    double *network_time, double *disk_io_time)
+                                                    double *network_time, double *disk_io_time,
+                                                    const std::string &commit_token, int commit_parts,
+                                                    double *commit_time)
   {
     try
     {
@@ -414,6 +462,12 @@ namespace ECProject
       recovery_info.set_block_id(block_id);
       recovery_info.set_recovery_offset(recovery_offset);
       recovery_info.set_recovery_size(recovery_size);
+      if (!commit_token.empty() && commit_parts > 1)
+      {
+        recovery_info.set_recovery_defer_fsync(true);
+        recovery_info.set_recovery_commit_token(commit_token);
+        recovery_info.set_recovery_commit_parts(commit_parts);
+      }
       recovery_info.set_proxy_ip(m_ip);
       recovery_info.set_proxy_port(m_port);
       std::string node_ip_port = std::string(ip) + ":" + std::to_string(port);
@@ -426,11 +480,14 @@ namespace ECProject
       }
       std::chrono::high_resolution_clock::time_point grpc_notify_time;
       datanode_proto::datanodeService::Stub *dn_stub = dn_it->second.get();
-      std::thread notify_datanode_thread([dn_stub, &context, &recovery_info, &result, &grpc_notify_time, &block_key,
+      grpc::Status grpc_status;
+      context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(180));
+      std::thread notify_datanode_thread([dn_stub, &context, &recovery_info, &result, &grpc_status,
+                                          &grpc_notify_time, &block_key,
                                           &block_id]() {
         grpc_notify_time = std::chrono::high_resolution_clock::now();
-        grpc::Status stat = dn_stub->handleRecoveryBreakdown(&context, recovery_info, &result);
-        if (!stat.ok())
+        grpc_status = dn_stub->handleRecoveryBreakdown(&context, recovery_info, &result);
+        if (!grpc_status.ok())
         {
           std::cout << "[RecoveryToDatanodeStripe] notify datanode failed! block_key: " << block_key
                     << " block_id: " << block_id << std::endl;
@@ -442,13 +499,25 @@ namespace ECProject
       asio::ip::tcp::socket socket(io_context);
       asio::ip::tcp::resolver resolver(io_context);
       asio::error_code con_error;
-      asio::connect(socket, resolver.resolve({std::string(ip), std::to_string(port + ECProject::DATANODE_PORT_SHIFT)}),
+      asio::connect(socket, resolver.resolve(
+                    {std::string(ip), std::to_string(port + ECProject::DATANODE_RECOVERY_PORT_SHIFT)}),
                     con_error);
       std::chrono::high_resolution_clock::time_point begin = std::chrono::high_resolution_clock::now();
       if (con_error)
       {
-        std::cout << "[RecoveryToDatanodeStripe] Connect to " << ip << ":" << port + ECProject::DATANODE_PORT_SHIFT
+        std::cout << "[RecoveryToDatanodeStripe] Connect to " << ip << ":"
+                  << port + ECProject::DATANODE_RECOVERY_PORT_SHIFT
                   << " failed! block_key: " << block_key << " block_id: " << block_id << std::endl;
+        context.TryCancel();
+        notify_datanode_thread.join();
+        return false;
+      }
+      const std::string stream_key =
+          recovery_stream_key(block_key, block_id, recovery_offset, recovery_size,
+                              commit_token);
+      if (!write_recovery_stream_key(socket, stream_key, error))
+      {
+        context.TryCancel();
         notify_datanode_thread.join();
         return false;
       }
@@ -459,7 +528,11 @@ namespace ECProject
       std::chrono::high_resolution_clock::time_point end = std::chrono::high_resolution_clock::now();
       *network_time = std::chrono::duration_cast<std::chrono::duration<double>>(end - begin).count();
       notify_datanode_thread.join();
+      if (error || !grpc_status.ok() || !result.message())
+        return false;
       *disk_io_time = result.disk_io_end_time() - result.disk_io_start_time();
+      if (commit_time)
+        *commit_time = result.recovery_commit_time();
       *network_time += result.grpc_start_time() -
                        std::chrono::duration_cast<std::chrono::duration<double>>(grpc_notify_time.time_since_epoch())
                            .count();
@@ -2396,7 +2469,8 @@ namespace ECProject
     response->Clear();
     const bool glrc_concurrent_recovery =
         recovery_request->glrc_ilp_recovery() && m_sys_config != nullptr && m_sys_config->CodeType == "gLRC" &&
-        (recovery_request->glrc_ilp_pipeline() || recovery_request->glrc_ilp_phase2());
+        (recovery_request->glrc_ilp_pipeline() || recovery_request->glrc_ilp_phase2() ||
+         recovery_request->glrc_ilp_phase1_partial());
     // Pipeline / Phase2 may run several recoveryBreakdown RPCs concurrently on one proxy
     // (hub/hop/chain, or hybrid phase2+pipeline on the same repair proxy). Resetting shared
     // ingress/egress here races with in-flight transfers on other threads.
@@ -2433,6 +2507,21 @@ namespace ECProject
         return grpc::Status::OK;
       }
       int cross_rack_num = recovery_request->cross_rack_num();
+      const bool phase1_partial =
+          recovery_request->glrc_ilp_recovery() && recovery_request->glrc_ilp_phase1_partial() &&
+          code_type == "gLRC";
+      const int phase1_range_offset = phase1_partial ? recovery_request->phase1_range_offset() : 0;
+      const int phase1_range_size =
+          phase1_partial ? recovery_request->phase1_range_size() : m_sys_config->BlockSize;
+      if (phase1_partial &&
+          (phase1_range_offset < 0 || phase1_range_size <= 0 ||
+           phase1_range_offset + phase1_range_size > m_sys_config->BlockSize ||
+           recovery_request->hybrid_commit_token().empty() ||
+           recovery_request->range_commit_parts() < 2))
+      {
+        return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+                            "invalid HMBR-LRC conventional range");
+      }
       // auto status = std::make_shared<std::vector<bool>>(recovery_request->datanodeip_size(), false);
       std::unique_ptr<bool[]> status(new bool[recovery_request->datanodeip_size()]);
       std::fill_n(status.get(), recovery_request->datanodeip_size(), false);
@@ -2442,6 +2531,8 @@ namespace ECProject
       for(int i = 0; i < recovery_request->datanodeip_size(); i++)
       {
         get_bufs[i] = static_cast<char*>(std::aligned_alloc(32, m_sys_config->BlockSize));
+        if (get_bufs[i] != nullptr)
+          std::memset(get_bufs[i], 0, m_sys_config->BlockSize);
       }
       //std::vector<char> res_buf(m_sys_config->BlockSize, 0);
       char *res_buf = static_cast<char*>(std::aligned_alloc(32, m_sys_config->BlockSize));
@@ -2457,10 +2548,26 @@ namespace ECProject
       std::vector<std::thread> get_threads;
       for (int i = 0; i < recovery_request->datanodeip_size(); i++)
       {
-        get_threads.push_back(std::thread(&ProxyImpl::get_from_node_breakdown, this, 
-          recovery_request->blockkeys(i), get_bufs[i], m_sys_config->BlockSize, recovery_request->datanodeip(i).c_str(), 
-          recovery_request->datanodeport(i), status.get(), i, &data_node_disk_io_start_time[i], &data_node_disk_io_end_time[i],
-          &data_node_network_start_time[i], &data_node_network_end_time[i], &data_node_grpc_notify_time[i], &data_node_grpc_start_time[i]));
+        if (phase1_partial)
+        {
+          get_threads.push_back(std::thread(
+              &ProxyImpl::get_from_node_stripe_range_breakdown, this, recovery_request->blockkeys(i), get_bufs[i],
+              m_sys_config->BlockSize, phase1_range_offset, phase1_range_size,
+              recovery_request->datanodeip(i).c_str(), recovery_request->datanodeport(i), status.get(), i,
+              &data_node_disk_io_start_time[i], &data_node_disk_io_end_time[i],
+              &data_node_network_start_time[i], &data_node_network_end_time[i],
+              &data_node_grpc_notify_time[i], &data_node_grpc_start_time[i], nullptr));
+        }
+        else
+        {
+          get_threads.push_back(std::thread(
+              &ProxyImpl::get_from_node_breakdown, this, recovery_request->blockkeys(i), get_bufs[i],
+              m_sys_config->BlockSize, recovery_request->datanodeip(i).c_str(),
+              recovery_request->datanodeport(i), status.get(), i, &data_node_disk_io_start_time[i],
+              &data_node_disk_io_end_time[i], &data_node_network_start_time[i],
+              &data_node_network_end_time[i], &data_node_grpc_notify_time[i],
+              &data_node_grpc_start_time[i]));
+        }
       }
       for (int i = 0; i < recovery_request->datanodeip_size(); i++)
       {
@@ -2478,7 +2585,7 @@ namespace ECProject
       {
         if (!isLocalDatanode(recovery_request->datanodeip(i).c_str(),
                              recovery_request->datanodeport(i)))
-          remote_ingress_bytes += m_sys_config->BlockSize;
+          remote_ingress_bytes += static_cast<size_t>(phase1_range_size);
       }
       double phase1_ingress_end = 0.0;
       if (remote_ingress_bytes > 0)
@@ -2553,9 +2660,15 @@ namespace ECProject
 
           std::chrono::high_resolution_clock::time_point t3 = std::chrono::high_resolution_clock::now();
           std::vector<unsigned char *> recovered_ptrs;
-          bool decode_ok = decode_glrc_ilp(m_sys_config->k, m_sys_config->r, m_sys_config->z,
+          bool decode_ok =
+              phase1_partial
+                  ? decode_glrc_ilp_range(m_sys_config->k, m_sys_config->r, m_sys_config->z,
                                           m_sys_config->BlockSize, block_idxs, block_ptrs.data(),
-                                          failed_ids, eq_indices, recovered_ptrs);
+                                          failed_ids, eq_indices, phase1_range_offset,
+                                          phase1_range_size, recovered_ptrs)
+                  : decode_glrc_ilp(m_sys_config->k, m_sys_config->r, m_sys_config->z,
+                                    m_sys_config->BlockSize, block_idxs, block_ptrs.data(),
+                                    failed_ids, eq_indices, recovered_ptrs);
           std::chrono::high_resolution_clock::time_point t4 = std::chrono::high_resolution_clock::now();
           response->set_decode_start_time(
               std::chrono::duration_cast<std::chrono::duration<double>>(t3.time_since_epoch()).count());
@@ -2581,20 +2694,34 @@ namespace ECProject
             }
             double total_write_net = 0.0;
             double total_write_disk = 0.0;
+            double max_commit_time = 0.0;
             bool write_ok = true;
             for (int i = 0; i < (int)failed_ids.size(); i++)
             {
-              double wnet = 0.0, wdisk = 0.0;
-              if (!RecoveryToDatanodeBreakdown(recovery_request->failed_block_keys(i).c_str(), failed_ids[i],
-                                               reinterpret_cast<char *>(recovered_ptrs[i]),
-                                               recovery_request->replaced_node_ips(i).c_str(),
-                                               recovery_request->replaced_node_ports(i), &wnet, &wdisk))
+              double wnet = 0.0, wdisk = 0.0, wcommit = 0.0;
+              const bool one_write_ok =
+                  phase1_partial
+                      ? RecoveryToDatanodeStripeBreakdown(
+                            recovery_request->failed_block_keys(i).c_str(), failed_ids[i],
+                            reinterpret_cast<char *>(recovered_ptrs[i]) + phase1_range_offset,
+                            recovery_request->replaced_node_ips(i).c_str(),
+                            recovery_request->replaced_node_ports(i), phase1_range_offset,
+                            phase1_range_size, &wnet, &wdisk,
+                            recovery_request->hybrid_commit_token(),
+                            recovery_request->range_commit_parts(), &wcommit)
+                      : RecoveryToDatanodeBreakdown(
+                            recovery_request->failed_block_keys(i).c_str(), failed_ids[i],
+                            reinterpret_cast<char *>(recovered_ptrs[i]),
+                            recovery_request->replaced_node_ips(i).c_str(),
+                            recovery_request->replaced_node_ports(i), &wnet, &wdisk);
+              if (!one_write_ok)
               {
                 write_ok = false;
                 break;
               }
               total_write_net += wnet;
               total_write_disk += wdisk;
+              max_commit_time = std::max(max_commit_time, wcommit);
             }
             if (!write_ok)
             {
@@ -2606,6 +2733,7 @@ namespace ECProject
             }
             response->set_dest_data_node_network_time(total_write_net);
             response->set_dest_data_node_disk_io_time(total_write_disk);
+            response->set_recovery_commit_time(max_commit_time);
             for (unsigned char *p : recovered_ptrs)
               delete[] p;
           }

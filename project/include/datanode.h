@@ -13,6 +13,7 @@
 #include "link_bandwidth.h"
 #include <memory>
 #include <mutex>
+#include <condition_variable>
 #include <unordered_map>
 // #define IF_DEBUG true
 #define IF_DEBUG false
@@ -22,11 +23,24 @@ namespace ECProject
         : public datanode_proto::datanodeService::Service
     {
     public:
-        DatanodeImpl(std::string datanode_ip_port) : datanode_ip_port(datanode_ip_port), acceptor(io_context, asio::ip::tcp::endpoint(asio::ip::address::from_string(datanode_ip_port.substr(0, datanode_ip_port.find(':')).c_str()), ECProject::DATANODE_PORT_SHIFT + std::stoi(datanode_ip_port.substr(datanode_ip_port.find(':') + 1, datanode_ip_port.size()))))
+        DatanodeImpl(std::string datanode_ip_port)
+            : datanode_ip_port(datanode_ip_port),
+              acceptor(io_context, asio::ip::tcp::endpoint(
+                  asio::ip::address::from_string(datanode_ip_port.substr(0, datanode_ip_port.find(':')).c_str()),
+                  ECProject::DATANODE_PORT_SHIFT +
+                      std::stoi(datanode_ip_port.substr(datanode_ip_port.find(':') + 1,
+                                                       datanode_ip_port.size())))),
+              recovery_acceptor(io_context, asio::ip::tcp::endpoint(
+                  asio::ip::address::from_string(datanode_ip_port.substr(0, datanode_ip_port.find(':')).c_str()),
+                  ECProject::DATANODE_RECOVERY_PORT_SHIFT +
+                      std::stoi(datanode_ip_port.substr(datanode_ip_port.find(':') + 1,
+                                                       datanode_ip_port.size()))))
         {
             m_ip = datanode_ip_port.substr(0, datanode_ip_port.find(':'));
             m_port = std::stoi(datanode_ip_port.substr(datanode_ip_port.find(':') + 1, datanode_ip_port.size()));
             m_download_port = m_port + ECProject::DATANODE_PORT_SHIFT;
+            asio::error_code error;
+            recovery_acceptor.non_blocking(true, error);
         }
         ~DatanodeImpl() {};
         grpc::Status checkalive(
@@ -104,6 +118,9 @@ namespace ECProject
     private:
         SharedBandwidthLimiter *nodeIngressBandwidth() const;
         SharedBandwidthLimiter *nodeEgressBandwidth() const;
+        bool takeRecoverySocket(const std::string &expected_key,
+                                asio::ip::tcp::socket &socket,
+                                asio::error_code &error);
 
         std::string m_local_repair_proxy_ip;
         int m_local_repair_proxy_port = 0;
@@ -117,6 +134,12 @@ namespace ECProject
         int m_download_port;
         asio::io_context io_context;
         asio::ip::tcp::acceptor acceptor;
+        asio::ip::tcp::acceptor recovery_acceptor;
+        std::mutex m_recovery_route_mu;
+        std::condition_variable m_recovery_route_cv;
+        bool m_recovery_accept_in_progress = false;
+        std::unordered_map<std::string, std::unique_ptr<asio::ip::tcp::socket>>
+            m_pending_recovery_sockets;
     };
 
     class DataNode

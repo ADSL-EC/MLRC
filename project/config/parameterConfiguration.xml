@@ -47,9 +47,13 @@
     <!-- Per-node unidirectional bandwidth: 125 MB/s (1 Gbps); ingress/egress independent -->
     <NodeBlockBandwidthMBps>125</NodeBlockBandwidthMBps>
 
-    <!-- Repair mode: phase1 | phase2 | pipeline | hybrid -->
+    <!-- Repair mode: phase1 | phase2 | pipeline | hybrid | hmbr -->
     <GlrcRepairMode>hybrid</GlrcRepairMode>
     <GlrcHybridP>auto</GlrcHybridP>
+    <!-- HMBR-LRC: auto balances RP and conventional lanes; integer fixes RP shard count. -->
+    <GlrcHmbrP>auto</GlrcHmbrP>
+    <!-- HMBR-LRC defaults to RS-like rule-based global parity selection. -->
+    <GlrcHmbrEquationPolicy>global-first</GlrcHmbrEquationPolicy>
     <!-- Equation policy: local-then-global | local-first | ilp-min-helper -->
     <GlrcEquationPolicy>local-then-global</GlrcEquationPolicy>
 

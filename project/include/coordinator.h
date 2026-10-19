@@ -168,6 +168,11 @@ namespace ECProject
     bool recovery_one_block(int stripe_id, int failed_block_id);
     bool recovery_glrc_ilp_breakdown(int stripe_id, const std::vector<int> &failed_block_ids,
                                        coordinator_proto::RecoveryReply *recovery_reply);
+    bool recovery_glrc_ilp_phase1_partial_breakdown(
+        int stripe_id, const std::vector<int> &failed_block_ids,
+        coordinator_proto::RecoveryReply *recovery_reply, const GlrcIlpRepairPlan &plan,
+        int anchor_failed_id, int range_offset, int range_size,
+        const std::string &commit_token, int range_commit_parts);
     bool recovery_glrc_ilp_phase2_breakdown(int stripe_id, const std::vector<int> &failed_block_ids,
                                               coordinator_proto::RecoveryReply *recovery_reply);
     bool recovery_glrc_ilp_phase2_breakdown_ex(int stripe_id, const std::vector<int> &failed_block_ids,
@@ -187,9 +192,12 @@ namespace ECProject
                                                    double *out_hub_egress_wall_sec = nullptr,
                                                    double *out_local_direct_hot_wall_sec = nullptr,
                                                    const std::shared_future<void> *teardown_gate = nullptr,
-                                                   const std::string &hybrid_commit_token = "");
+                                                   const std::string &hybrid_commit_token = "",
+                                                   int range_commit_parts = 2);
     bool recovery_glrc_ilp_hybrid_breakdown(int stripe_id, const std::vector<int> &failed_block_ids,
                                             coordinator_proto::RecoveryReply *recovery_reply);
+    bool recovery_glrc_ilp_hmbr_breakdown(int stripe_id, const std::vector<int> &failed_block_ids,
+                                          coordinator_proto::RecoveryReply *recovery_reply);
     bool recovery_one_block_breakdown(int stripe_id, int failed_block_id, 
       std::vector<double> &disk_io_start_time, std::vector<double> &disk_io_end_time, std::vector<double> &decode_start_time, std::vector<double> &decode_end_time,
       std::vector<double> &network_start_time, std::vector<double> &network_end_time, double &cross_rack_network_time, double &cross_rack_xor_time,

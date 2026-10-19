@@ -46,6 +46,16 @@ namespace ECProject
     double hybrid_failed_node_hot_time = 0.0;
     double hybrid_hub_egress_hot_time = 0.0;
     double hybrid_commit_time = 0.0;
+    int hmbr_rp_shards = 0;
+    double hmbr_rp_shards_continuous = 0.0;
+    int hmbr_conv_shards = 0;
+    int hmbr_conv_lanes = 0;
+    double hmbr_rp_estimated_time = 0.0;
+    double hmbr_conv_estimated_time = 0.0;
+    double hmbr_conv_wall_time = 0.0;
+    double hmbr_rp_wall_time = 0.0;
+    double hmbr_commit_time = 0.0;
+    double hmbr_p_select_time = 0.0;
     std::vector<std::string> selected_equations;
     std::vector<int> helper_block_ids;
   };

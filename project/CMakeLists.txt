@@ -179,6 +179,7 @@ foreach (_target
             ${CMAKE_CURRENT_SOURCE_DIR}/src/glrc_repair_ilp.cpp
             ${CMAKE_CURRENT_SOURCE_DIR}/src/glrc_pipeline_plan.cpp
             ${CMAKE_CURRENT_SOURCE_DIR}/src/glrc_hybrid.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/glrc_hmbr.cpp
             ${CMAKE_CURRENT_SOURCE_DIR}/src/glrc_pipeline_codec.cpp
             #${_target}.cpp
             )
@@ -193,3 +194,17 @@ foreach (_target
             -lJerasure -lgf_complete
             )
 endforeach ()
+
+option(BUILD_GLRC_TESTS "Build standalone gLRC recovery tests" OFF)
+if(BUILD_GLRC_TESTS)
+    add_executable(test_glrc_hmbr
+            ${ASM_SOURCES}
+            ${CMAKE_CURRENT_SOURCE_DIR}/test/test_glrc_hmbr.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/glrc_hmbr.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/glrc_repair_ilp.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/unilrc_encoder.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/lrc.cpp)
+    target_link_libraries(test_glrc_hmbr
+            -lpthread
+            -lJerasure -lgf_complete)
+endif()

@@ -1,4 +1,5 @@
 #include "datanode.h"
+#include "recovery_stream.h"
 #include "link_bandwidth.h"
 #include "toolbox.h"
 #include "unilrc_encoder.h"
@@ -11,11 +12,13 @@
 #include <fstream>
 #include <memory>
 #include <mutex>
+#include <stdexcept>
 #include <thread>
 #include <unordered_map>
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <sys/socket.h>
 namespace ECProject
 {
     namespace
@@ -66,8 +69,19 @@ namespace ECProject
                 const bool should_commit = state->all_parts_ok;
                 lock.unlock();
                 const auto begin = std::chrono::high_resolution_clock::now();
-                const bool publish_ok =
+                bool publish_ok =
                     should_commit && (std::rename(temp_path.c_str(), final_path.c_str()) == 0);
+                if (publish_ok)
+                {
+                    const size_t slash = final_path.find_last_of('/');
+                    const std::string directory =
+                        slash == std::string::npos ? "." : final_path.substr(0, slash);
+                    const int dir_fd = ::open(directory.c_str(), O_RDONLY | O_DIRECTORY);
+                    if (dir_fd < 0 || ::fsync(dir_fd) != 0)
+                        publish_ok = false;
+                    if (dir_fd >= 0)
+                        ::close(dir_fd);
+                }
                 if (!publish_ok)
                     std::remove(temp_path.c_str());
                 const double elapsed =
@@ -95,6 +109,66 @@ namespace ECProject
             if (state->waiters == 0 && state->commit_done)
                 g_hybrid_commits.erase(key);
             return ok;
+        }
+    }
+
+    bool DatanodeImpl::takeRecoverySocket(const std::string &expected_key,
+                                          asio::ip::tcp::socket &socket,
+                                          asio::error_code &error)
+    {
+        const auto deadline =
+            std::chrono::steady_clock::now() + std::chrono::seconds(180);
+        for (;;)
+        {
+            if (std::chrono::steady_clock::now() >= deadline)
+            {
+                error = asio::error::timed_out;
+                return false;
+            }
+            std::unique_lock<std::mutex> lock(m_recovery_route_mu);
+            auto pending = m_pending_recovery_sockets.find(expected_key);
+            if (pending != m_pending_recovery_sockets.end())
+            {
+                socket = std::move(*pending->second);
+                m_pending_recovery_sockets.erase(pending);
+                return true;
+            }
+
+            if (m_recovery_accept_in_progress)
+            {
+                m_recovery_route_cv.wait_for(lock, std::chrono::milliseconds(10));
+                continue;
+            }
+
+            m_recovery_accept_in_progress = true;
+            lock.unlock();
+
+            auto accepted = std::make_unique<asio::ip::tcp::socket>(io_context);
+            recovery_acceptor.accept(*accepted, error);
+            std::string received_key;
+            if (!error)
+            {
+                const timeval timeout{10, 0};
+                ::setsockopt(accepted->native_handle(), SOL_SOCKET, SO_RCVTIMEO,
+                             &timeout, sizeof(timeout));
+                read_recovery_stream_key(*accepted, received_key, error);
+            }
+
+            lock.lock();
+            m_recovery_accept_in_progress = false;
+            if (!error)
+                m_pending_recovery_sockets[received_key] = std::move(accepted);
+            m_recovery_route_cv.notify_all();
+            if (error == asio::error::would_block ||
+                error == asio::error::try_again)
+            {
+                error.clear();
+                lock.unlock();
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                continue;
+            }
+            if (error)
+                return false;
         }
     }
 
@@ -541,10 +615,14 @@ namespace ECProject
     {
         std::string block_key = recovery_info->block_key();
         int block_id = recovery_info->block_id();
+        const std::string stream_key =
+            recovery_stream_key(block_key, block_id, 0, m_sys_config->BlockSize,
+                                recovery_info->recovery_commit_token());
+        bool handler_ok = false;
         SharedBandwidthLimiter *ingress_bw =
             ingressBandwidthForRepairProxy(recovery_info->proxy_ip(), recovery_info->proxy_port());
 
-        auto handler = [this, ingress_bw](std::string block_key, int block_id) mutable
+        auto handler = [this, ingress_bw, stream_key, &handler_ok](std::string block_key, int block_id) mutable
         {
             try
             {
@@ -552,7 +630,8 @@ namespace ECProject
                 // only send data
                 asio::error_code ec;
                 asio::ip::tcp::socket socket(io_context);
-                acceptor.accept(socket);
+                if (!takeRecoverySocket(stream_key, socket, ec))
+                    throw std::runtime_error("failed to route recovery stream: " + ec.message());
                 tcp_read_with_shared_bandwidth(socket, buf.data(), m_sys_config->BlockSize, ingress_bw, ec);
 
                 asio::error_code ignore_ec;
@@ -575,6 +654,7 @@ namespace ECProject
                 ofs.write(buf.data(), m_sys_config->BlockSize);
                 ofs.flush();
                 ofs.close();
+                handler_ok = !ec && ofs.good();
 
                 if (IF_DEBUG)
                 {
@@ -591,7 +671,7 @@ namespace ECProject
         {
             std::thread my_thread(handler, block_key, block_id);
             my_thread.join();
-            response->set_message(true);
+            response->set_message(handler_ok);
         }
         catch (const std::exception &e)
         {
@@ -618,6 +698,9 @@ namespace ECProject
         const bool defer_fsync = recovery_info->recovery_defer_fsync();
         const std::string commit_token = recovery_info->recovery_commit_token();
         const int commit_parts = recovery_info->recovery_commit_parts();
+        const std::string stream_key =
+            recovery_stream_key(block_key, block_id, recovery_offset,
+                                recovery_size, commit_token);
         // A full-block (recovery_size==0) stream is paced by the pipeline hub's
         // shared egress NIC.  Charging the target ingress again makes one
         // physical transfer take ~2B/w because the receiver cannot observe the
@@ -628,14 +711,15 @@ namespace ECProject
                 ? nullptr
                 : ingressBandwidthForRepairProxy(recovery_info->proxy_ip(), recovery_info->proxy_port());
 
-        auto handler = [this, ingress_bw, defer_fsync, commit_token, commit_parts,
+        auto handler = [this, ingress_bw, defer_fsync, commit_token, commit_parts, stream_key,
                         &response](std::string block_key, int block_id, int recovery_offset,
                                    int recovery_size, bool stripe_mode) mutable {
             try
             {
                 asio::error_code ec;
                 asio::ip::tcp::socket socket(io_context);
-                acceptor.accept(socket);
+                if (!takeRecoverySocket(stream_key, socket, ec))
+                    throw std::runtime_error("failed to route recovery stream: " + ec.message());
 
                 std::string targetdir = datanode_storage_dir(m_port);
                 std::string writepath = targetdir + block_key;
@@ -749,10 +833,16 @@ namespace ECProject
                     const bool payload_ok = !ec && wrote == static_cast<size_t>(recovery_size);
                     if (defer_fsync && !commit_token.empty() && commit_parts > 1)
                     {
+                        const auto flush_begin = std::chrono::high_resolution_clock::now();
+                        const bool durable = payload_ok && (::fsync(fd) == 0);
+                        disk_active_sec +=
+                            std::chrono::duration<double>(
+                                std::chrono::high_resolution_clock::now() - flush_begin)
+                                .count();
                         const std::string commit_key =
                             std::to_string(m_port) + ":" + block_key + ":" + commit_token;
                         if (!coordinate_hybrid_range_commit(commit_key, commit_parts, range_writepath,
-                                                            writepath, payload_ok, commit_sec))
+                                                            writepath, durable, commit_sec))
                             ec = asio::error::fault;
                         disk_active_sec += commit_sec;
                     }

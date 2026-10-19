@@ -1605,6 +1605,16 @@ namespace ECProject
     metrics.hybrid_failed_node_hot_time = reply.hybrid_failed_node_hot_time();
     metrics.hybrid_hub_egress_hot_time = reply.hybrid_hub_egress_hot_time();
     metrics.hybrid_commit_time = reply.hybrid_commit_time();
+    metrics.hmbr_rp_shards = reply.hmbr_rp_shards();
+    metrics.hmbr_rp_shards_continuous = reply.hmbr_rp_shards_continuous();
+    metrics.hmbr_conv_shards = reply.hmbr_conv_shards();
+    metrics.hmbr_conv_lanes = reply.hmbr_conv_lanes();
+    metrics.hmbr_rp_estimated_time = reply.hmbr_rp_estimated_time();
+    metrics.hmbr_conv_estimated_time = reply.hmbr_conv_estimated_time();
+    metrics.hmbr_conv_wall_time = reply.hmbr_conv_wall_time();
+    metrics.hmbr_rp_wall_time = reply.hmbr_rp_wall_time();
+    metrics.hmbr_commit_time = reply.hmbr_commit_time();
+    metrics.hmbr_p_select_time = reply.hmbr_p_select_time();
     metrics.selected_equations.clear();
     metrics.helper_block_ids.clear();
     for (int i = 0; i < reply.selected_equations_size(); i++)

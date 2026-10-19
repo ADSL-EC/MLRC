@@ -131,7 +131,8 @@ namespace ECProject
     bool RecoveryToDatanodeBreakdown(const char *block_key, int block_id, const char *buf, const char *ip, int port, double *network_time, double *disk_io_time);
     bool RecoveryToDatanodeStripeBreakdown(const char *block_key, int block_id, const char *buf, const char *ip, int port,
                                            int recovery_offset, int recovery_size, double *network_time,
-                                           double *disk_io_time);
+                                           double *disk_io_time, const std::string &commit_token = "",
+                                           int commit_parts = 0, double *commit_time = nullptr);
     void get_from_node(const std::string &block_key, char *block_value, const size_t block_size, const char *datanode_ip, const int datanode_port, bool *status, int index);
     void get_from_node_breakdown(const std::string &block_key, char *block_value, const size_t block_size, const char *datanode_ip, const int datanode_port, bool *status, int index, 
       double *disk_io_start_time, double *disk_io_end_time, double *network_start_time, double *network_end_time, double *grpc_notify_time, double *grpc_start_time);

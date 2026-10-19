@@ -7,6 +7,7 @@
 namespace ECProject
 {
   const int DATANODE_PORT_SHIFT = 50;
+  const int DATANODE_RECOVERY_PORT_SHIFT = 100;
   const int PROXY_PORT_SHIFT = 1;
   /** Base TCP port for Phase-2 stripe exchange (see phase2_exchange_port).
    * Must stay below PROXY_PIPELINE_EXCHANGE_BASE and below the OS ephemeral range
@@ -68,11 +69,15 @@ namespace ECProject
     int ClientPort = 55555;
     std::string AppendMode = "UNILRC_MODE";
     std::string CodeType = "UniLRC";
-    /** gLRC repair: "phase1", "phase2", "pipeline", or "hybrid". */
+    /** gLRC repair: "phase1", "phase2", "pipeline", "hybrid", or "hmbr". */
     std::string GlrcRepairMode = "phase1";
     /** Hybrid split p: "auto" or integer in [0, GlrcShardCount-1]. 0 = pipeline-only. */
     std::string GlrcHybridP = "auto";
     std::string GlrcEquationPolicy = "local-then-global";
+    /** HMBR-LRC RP prefix: "auto" or a fixed shard count in [1, GlrcShardCount-1]. */
+    std::string GlrcHmbrP = "auto";
+    /** HMBR-LRC defaults to RS-like global-parity-first rule-based planning. */
+    std::string GlrcHmbrEquationPolicy = "global-first";
     int GlrcShardCount = 16;
     /** Pipeline in-flight shard window (W). 0 = W=GlrcShardCount (full pipeline); 1 = serial W=1. */
     int GlrcPipelineWindow = 0;

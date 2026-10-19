@@ -1,6 +1,7 @@
 #include "proxy.h"
 #include "config.h"
 #include "link_bandwidth.h"
+#include "recovery_stream.h"
 #include "unilrc_encoder.h"
 #include <asio.hpp>
 #include <algorithm>
@@ -976,10 +977,17 @@ bool ProxyImpl::glrcIlpPhase2Recovery(const proxy_proto::RecoveryRequest *recove
       write_stream->recovery_info.set_recovery_size(
           hybrid_partial_write ? static_cast<int>(phase2_write_bytes) : 0);
       write_stream->recovery_info.set_recovery_defer_fsync(hybrid_partial_write);
+      const std::string recovery_route_token =
+          recovery_request->hybrid_commit_token().empty()
+              ? ("phase2-" + std::to_string(exchange_epoch) + "-" +
+                 std::to_string(partition_id))
+              : recovery_request->hybrid_commit_token();
+      write_stream->recovery_info.set_recovery_commit_token(
+          recovery_route_token);
       if (hybrid_partial_write)
       {
-        write_stream->recovery_info.set_recovery_commit_token(recovery_request->hybrid_commit_token());
-        write_stream->recovery_info.set_recovery_commit_parts(2);
+        write_stream->recovery_info.set_recovery_commit_parts(
+            std::max(2, recovery_request->range_commit_parts()));
       }
       write_stream->recovery_info.set_proxy_ip(m_ip);
       write_stream->recovery_info.set_proxy_port(m_port);
@@ -996,8 +1004,22 @@ bool ProxyImpl::glrcIlpPhase2Recovery(const proxy_proto::RecoveryRequest *recove
       asio::ip::tcp::resolver resolver(write_stream->io);
       asio::error_code connect_ec;
       asio::connect(write_stream->socket,
-                    resolver.resolve({rep_ip, std::to_string(rep_port + ECProject::DATANODE_PORT_SHIFT)}),
+                    resolver.resolve({rep_ip, std::to_string(
+                        rep_port + ECProject::DATANODE_RECOVERY_PORT_SHIFT)}),
                     connect_ec);
+      if (!connect_ec)
+      {
+        const int recovery_size =
+            write_stream->recovery_info.recovery_size() > 0
+                ? write_stream->recovery_info.recovery_size()
+                : block_size;
+        const std::string stream_key = recovery_stream_key(
+            write_stream->recovery_info.block_key(),
+            write_stream->recovery_info.block_id(),
+            write_stream->recovery_info.recovery_offset(), recovery_size,
+            write_stream->recovery_info.recovery_commit_token());
+        write_recovery_stream_key(write_stream->socket, stream_key, connect_ec);
+      }
       if (connect_ec)
       {
         set_phase2_error("phase2 write stream connect failed: " + node_ip_port + " " +

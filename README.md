@@ -6,6 +6,7 @@ MLRC is a prototype for evaluating gLRC recovery. It contains a client, coordina
 - `phase2`: distributed shard decoding and proxy exchange;
 - `pipeline`: parallel local-first recovery chains;
 - `hybrid`: concurrent Phase2 prefix and Pipeline suffix recovery.
+- `hmbr`: HMBR-LRC baseline with concurrent RP and conventional lanes.
 
 In the real-system deployment, each storage host runs one datanode and one proxy. Every host has an independent ingress and egress bandwidth budget. Configuration `cluster` entries represent logical gLRC groups, not physical racks.
 
@@ -108,7 +109,28 @@ The stripe width is `n = k + r + z`, and maximum fault tolerance is `r + z`.
 <GlrcRepairMode>hybrid</GlrcRepairMode>
 ```
 
-Valid values are `phase1`, `phase2`, `pipeline`, and `hybrid`.
+Valid values are `phase1`, `phase2`, `pipeline`, `hybrid`, and `hmbr`.
+
+For the HMBR-LRC baseline, use `hmbr`. It applies one shared gLRC repair
+plan to a Pipeline (RP) prefix and a conventional Phase1 suffix. With
+`GlrcHmbrP=auto`, the split balances HMBR's RP and conventional time models
+using the selected helper count, failure count, and homogeneous node bandwidth.
+An integer fixes the RP shard count for sensitivity experiments. Conventional
+shards are decoded together at one failed-node anchor, which then forwards the
+other recovered outputs. This mode implements the non-rack-aware HMBR design;
+logical gLRC groups are not treated as physical racks.
+With independent ingress and egress budgets, auto mode uses
+`T_RP=t*f/B` and `T_CONV=(1-t)*(h+f-1)/B`, giving
+`t=(h+f-1)/(h+2*f-1)` before shard rounding.
+
+```xml
+<GlrcHmbrP>auto</GlrcHmbrP>
+<GlrcHmbrEquationPolicy>global-first</GlrcHmbrEquationPolicy>
+```
+
+`global-first` is the default HMBR-LRC rule-based policy: it prefers global
+parity equations, then falls back to local equations when required for coverage
+or invertibility.
 
 For Hybrid recovery:
 
@@ -129,11 +151,13 @@ Available policies:
 - `local-then-global`: prefer local equations, then global equations;
 - `local-first`: recommended for Pipeline and Hybrid;
 - `ilp-min-helper`: minimize the helper-block union.
+- `global-first`: prefer global equations, then use local equations as fallback.
 
 Typical combinations:
 
 - Phase1/Phase2 baseline: `local-then-global`;
 - Pipeline/Hybrid: `local-first`;
+- HMBR-LRC: `GlrcHmbrEquationPolicy=global-first`;
 - helper-count comparison: `ilp-min-helper`.
 
 ### Data-Plane Parameters
