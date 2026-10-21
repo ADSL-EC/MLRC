@@ -4064,15 +4064,19 @@ class RecoveryRequest final :
     kPipelineHubProxyPortFieldNumber = 54,
     kPipelineLocalFailedBlockIdFieldNumber = 55,
     kPipelineLocalReplacedNodePortFieldNumber = 58,
+    kPipelineChainHubIsTailFlagFieldNumber = 63,
+    kPipelineEquationIsLocalFieldNumber = 64,
     kGlrcIlpPipelineFieldNumber = 36,
     kPhase2ShareProxyNodeBandwidthFieldNumber = 73,
     kPhase2ReadyOnlyFieldNumber = 74,
-    kPipelineChainHubIsTailFlagFieldNumber = 63,
-    kPipelineEquationIsLocalFieldNumber = 64,
+    kGlrcIlpPhase1PartialFieldNumber = 77,
     kPipelineMyListenPortFieldNumber = 68,
     kPipelineChainHubListenPortFieldNumber = 69,
     kPipelineShardGlobalBeginFieldNumber = 71,
     kPipelineGlobalShardCountFieldNumber = 72,
+    kPhase1RangeOffsetFieldNumber = 78,
+    kPhase1RangeSizeFieldNumber = 79,
+    kRangeCommitPartsFieldNumber = 80,
   };
   // repeated string datanodeip = 6;
   int datanodeip_size() const;
@@ -5139,6 +5143,24 @@ class RecoveryRequest final :
   void _internal_set_pipeline_local_replaced_node_port(int32_t value);
   public:
 
+  // int32 pipeline_chain_hub_is_tail_flag = 63;
+  void clear_pipeline_chain_hub_is_tail_flag();
+  int32_t pipeline_chain_hub_is_tail_flag() const;
+  void set_pipeline_chain_hub_is_tail_flag(int32_t value);
+  private:
+  int32_t _internal_pipeline_chain_hub_is_tail_flag() const;
+  void _internal_set_pipeline_chain_hub_is_tail_flag(int32_t value);
+  public:
+
+  // int32 pipeline_equation_is_local = 64;
+  void clear_pipeline_equation_is_local();
+  int32_t pipeline_equation_is_local() const;
+  void set_pipeline_equation_is_local(int32_t value);
+  private:
+  int32_t _internal_pipeline_equation_is_local() const;
+  void _internal_set_pipeline_equation_is_local(int32_t value);
+  public:
+
   // bool glrc_ilp_pipeline = 36;
   void clear_glrc_ilp_pipeline();
   bool glrc_ilp_pipeline() const;
@@ -5166,22 +5188,13 @@ class RecoveryRequest final :
   void _internal_set_phase2_ready_only(bool value);
   public:
 
-  // int32 pipeline_chain_hub_is_tail_flag = 63;
-  void clear_pipeline_chain_hub_is_tail_flag();
-  int32_t pipeline_chain_hub_is_tail_flag() const;
-  void set_pipeline_chain_hub_is_tail_flag(int32_t value);
+  // bool glrc_ilp_phase1_partial = 77;
+  void clear_glrc_ilp_phase1_partial();
+  bool glrc_ilp_phase1_partial() const;
+  void set_glrc_ilp_phase1_partial(bool value);
   private:
-  int32_t _internal_pipeline_chain_hub_is_tail_flag() const;
-  void _internal_set_pipeline_chain_hub_is_tail_flag(int32_t value);
-  public:
-
-  // int32 pipeline_equation_is_local = 64;
-  void clear_pipeline_equation_is_local();
-  int32_t pipeline_equation_is_local() const;
-  void set_pipeline_equation_is_local(int32_t value);
-  private:
-  int32_t _internal_pipeline_equation_is_local() const;
-  void _internal_set_pipeline_equation_is_local(int32_t value);
+  bool _internal_glrc_ilp_phase1_partial() const;
+  void _internal_set_glrc_ilp_phase1_partial(bool value);
   public:
 
   // int32 pipeline_my_listen_port = 68;
@@ -5218,6 +5231,33 @@ class RecoveryRequest final :
   private:
   int32_t _internal_pipeline_global_shard_count() const;
   void _internal_set_pipeline_global_shard_count(int32_t value);
+  public:
+
+  // int32 phase1_range_offset = 78;
+  void clear_phase1_range_offset();
+  int32_t phase1_range_offset() const;
+  void set_phase1_range_offset(int32_t value);
+  private:
+  int32_t _internal_phase1_range_offset() const;
+  void _internal_set_phase1_range_offset(int32_t value);
+  public:
+
+  // int32 phase1_range_size = 79;
+  void clear_phase1_range_size();
+  int32_t phase1_range_size() const;
+  void set_phase1_range_size(int32_t value);
+  private:
+  int32_t _internal_phase1_range_size() const;
+  void _internal_set_phase1_range_size(int32_t value);
+  public:
+
+  // int32 range_commit_parts = 80;
+  void clear_range_commit_parts();
+  int32_t range_commit_parts() const;
+  void set_range_commit_parts(int32_t value);
+  private:
+  int32_t _internal_range_commit_parts() const;
+  void _internal_set_range_commit_parts(int32_t value);
   public:
 
   // @@protoc_insertion_point(class_scope:proxy_proto.RecoveryRequest)
@@ -5316,15 +5356,19 @@ class RecoveryRequest final :
     int32_t pipeline_hub_proxy_port_;
     int32_t pipeline_local_failed_block_id_;
     int32_t pipeline_local_replaced_node_port_;
+    int32_t pipeline_chain_hub_is_tail_flag_;
+    int32_t pipeline_equation_is_local_;
     bool glrc_ilp_pipeline_;
     bool phase2_share_proxy_node_bandwidth_;
     bool phase2_ready_only_;
-    int32_t pipeline_chain_hub_is_tail_flag_;
-    int32_t pipeline_equation_is_local_;
+    bool glrc_ilp_phase1_partial_;
     int32_t pipeline_my_listen_port_;
     int32_t pipeline_chain_hub_listen_port_;
     int32_t pipeline_shard_global_begin_;
     int32_t pipeline_global_shard_count_;
+    int32_t phase1_range_offset_;
+    int32_t phase1_range_size_;
+    int32_t range_commit_parts_;
     mutable ::PROTOBUF_NAMESPACE_ID::internal::CachedSize _cached_size_;
   };
   union { Impl_ _impl_; };
@@ -13264,6 +13308,86 @@ inline void RecoveryRequest::set_allocated_hybrid_commit_token(std::string* hybr
   }
 #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
   // @@protoc_insertion_point(field_set_allocated:proxy_proto.RecoveryRequest.hybrid_commit_token)
+}
+
+// bool glrc_ilp_phase1_partial = 77;
+inline void RecoveryRequest::clear_glrc_ilp_phase1_partial() {
+  _impl_.glrc_ilp_phase1_partial_ = false;
+}
+inline bool RecoveryRequest::_internal_glrc_ilp_phase1_partial() const {
+  return _impl_.glrc_ilp_phase1_partial_;
+}
+inline bool RecoveryRequest::glrc_ilp_phase1_partial() const {
+  // @@protoc_insertion_point(field_get:proxy_proto.RecoveryRequest.glrc_ilp_phase1_partial)
+  return _internal_glrc_ilp_phase1_partial();
+}
+inline void RecoveryRequest::_internal_set_glrc_ilp_phase1_partial(bool value) {
+  
+  _impl_.glrc_ilp_phase1_partial_ = value;
+}
+inline void RecoveryRequest::set_glrc_ilp_phase1_partial(bool value) {
+  _internal_set_glrc_ilp_phase1_partial(value);
+  // @@protoc_insertion_point(field_set:proxy_proto.RecoveryRequest.glrc_ilp_phase1_partial)
+}
+
+// int32 phase1_range_offset = 78;
+inline void RecoveryRequest::clear_phase1_range_offset() {
+  _impl_.phase1_range_offset_ = 0;
+}
+inline int32_t RecoveryRequest::_internal_phase1_range_offset() const {
+  return _impl_.phase1_range_offset_;
+}
+inline int32_t RecoveryRequest::phase1_range_offset() const {
+  // @@protoc_insertion_point(field_get:proxy_proto.RecoveryRequest.phase1_range_offset)
+  return _internal_phase1_range_offset();
+}
+inline void RecoveryRequest::_internal_set_phase1_range_offset(int32_t value) {
+  
+  _impl_.phase1_range_offset_ = value;
+}
+inline void RecoveryRequest::set_phase1_range_offset(int32_t value) {
+  _internal_set_phase1_range_offset(value);
+  // @@protoc_insertion_point(field_set:proxy_proto.RecoveryRequest.phase1_range_offset)
+}
+
+// int32 phase1_range_size = 79;
+inline void RecoveryRequest::clear_phase1_range_size() {
+  _impl_.phase1_range_size_ = 0;
+}
+inline int32_t RecoveryRequest::_internal_phase1_range_size() const {
+  return _impl_.phase1_range_size_;
+}
+inline int32_t RecoveryRequest::phase1_range_size() const {
+  // @@protoc_insertion_point(field_get:proxy_proto.RecoveryRequest.phase1_range_size)
+  return _internal_phase1_range_size();
+}
+inline void RecoveryRequest::_internal_set_phase1_range_size(int32_t value) {
+  
+  _impl_.phase1_range_size_ = value;
+}
+inline void RecoveryRequest::set_phase1_range_size(int32_t value) {
+  _internal_set_phase1_range_size(value);
+  // @@protoc_insertion_point(field_set:proxy_proto.RecoveryRequest.phase1_range_size)
+}
+
+// int32 range_commit_parts = 80;
+inline void RecoveryRequest::clear_range_commit_parts() {
+  _impl_.range_commit_parts_ = 0;
+}
+inline int32_t RecoveryRequest::_internal_range_commit_parts() const {
+  return _impl_.range_commit_parts_;
+}
+inline int32_t RecoveryRequest::range_commit_parts() const {
+  // @@protoc_insertion_point(field_get:proxy_proto.RecoveryRequest.range_commit_parts)
+  return _internal_range_commit_parts();
+}
+inline void RecoveryRequest::_internal_set_range_commit_parts(int32_t value) {
+  
+  _impl_.range_commit_parts_ = value;
+}
+inline void RecoveryRequest::set_range_commit_parts(int32_t value) {
+  _internal_set_range_commit_parts(value);
+  // @@protoc_insertion_point(field_set:proxy_proto.RecoveryRequest.range_commit_parts)
 }
 
 // -------------------------------------------------------------------

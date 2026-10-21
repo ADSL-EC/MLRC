@@ -701,15 +701,11 @@ namespace ECProject
         const std::string stream_key =
             recovery_stream_key(block_key, block_id, recovery_offset,
                                 recovery_size, commit_token);
-        // A full-block (recovery_size==0) stream is paced by the pipeline hub's
-        // shared egress NIC.  Charging the target ingress again makes one
-        // physical transfer take ~2B/w because the receiver cannot observe the
-        // sender's pre-write sleep.  Stripe-mode legacy callers retain target
-        // ingress accounting because they may fan in from independent senders.
-        SharedBandwidthLimiter *ingress_bw =
-            recovery_info->recovery_size() == 0
-                ? nullptr
-                : ingressBandwidthForRepairProxy(recovery_info->proxy_ip(), recovery_info->proxy_port());
+        // Same rule as hybrid/pipeline full-block writeback. The proxy writer
+        // already Primary-paces its egress. Charging this socket's ingress too
+        // sleeps inside read(), stalls that egress, and makes one RP prefix
+        // take ~2B/w. Helper fan-in is paced once at the repair proxy.
+        SharedBandwidthLimiter *ingress_bw = nullptr;
 
         auto handler = [this, ingress_bw, defer_fsync, commit_token, commit_parts, stream_key,
                         &response](std::string block_key, int block_id, int recovery_offset,

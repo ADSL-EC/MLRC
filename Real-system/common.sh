@@ -37,7 +37,18 @@ remote() {
   if [[ -f "$SSH_KEY" ]]; then
     ssh_args+=(-i "$SSH_KEY" -o IdentitiesOnly=yes)
   fi
-  ssh "${ssh_args[@]}" "${SSH_USER}@${host}" "$@"
+  # New nodes are reachable on the public address as well. Unauthenticated
+  # scans can fill sshd MaxStartups and reset a legitimate handshake.
+  local attempt
+  for attempt in 1 2 3 4 5; do
+    if ssh "${ssh_args[@]}" "${SSH_USER}@${host}" "$@"; then
+      return 0
+    fi
+    if ((attempt == 5)); then
+      return 1
+    fi
+    sleep $((attempt * 2))
+  done
 }
 
 usage_hosts() {

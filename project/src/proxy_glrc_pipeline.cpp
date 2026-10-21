@@ -1554,7 +1554,7 @@ bool ProxyImpl::glrcIlpPipelineLocalDirectRecovery(const proxy_proto::RecoveryRe
     recovery_info.set_recovery_defer_fsync(!full_block_write);
     recovery_info.set_recovery_commit_token(
         recovery_request->hybrid_commit_token().empty()
-            ? ("pipeline-local-" + std::to_string(exchange_epoch) + "-" +
+            ? ("pipeline-local-" + std::to_string(epoch) + "-" +
                std::to_string(chain_id))
             : recovery_request->hybrid_commit_token());
     if (!full_block_write)
@@ -2278,7 +2278,7 @@ bool ProxyImpl::glrcIlpPipelineHubRecovery(const proxy_proto::RecoveryRequest *r
     ws->recovery_info.set_recovery_defer_fsync(!full_block_write);
     ws->recovery_info.set_recovery_commit_token(
         recovery_request->hybrid_commit_token().empty()
-            ? ("pipeline-hub-" + std::to_string(exchange_epoch) + "-" +
+            ? ("pipeline-hub-" + std::to_string(epoch) + "-" +
                std::to_string(failed_ids[i]))
             : recovery_request->hybrid_commit_token());
     if (!full_block_write)

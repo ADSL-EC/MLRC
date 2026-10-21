@@ -191,6 +191,11 @@ namespace ECProject
     Phase2BlockDuplexBw phase2BlockDuplexBandwidth(int repair_block_id, int exchange_epoch);
     bool glrcIlpPhase2Recovery(const proxy_proto::RecoveryRequest *recovery_request,
                                proxy_proto::RecoveryReply *response);
+    // HMBR conventional suffix: shard reads overlap AVX2 decode and suffix writeback.
+    // The shared ingress floor still covers remote suffixes plus one local RP prefix.
+    bool hmbrConvShardRecovery(const proxy_proto::RecoveryRequest *recovery_request,
+                               proxy_proto::RecoveryReply *response,
+                               std::string *error_message);
     bool glrcIlpPipelineRecovery(const proxy_proto::RecoveryRequest *recovery_request,
                                    proxy_proto::RecoveryReply *response);
     bool glrcIlpPipelineHubRecovery(const proxy_proto::RecoveryRequest *recovery_request,

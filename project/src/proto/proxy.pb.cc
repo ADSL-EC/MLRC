@@ -410,15 +410,19 @@ PROTOBUF_CONSTEXPR RecoveryRequest::RecoveryRequest(
   , /*decltype(_impl_.pipeline_hub_proxy_port_)*/0
   , /*decltype(_impl_.pipeline_local_failed_block_id_)*/0
   , /*decltype(_impl_.pipeline_local_replaced_node_port_)*/0
+  , /*decltype(_impl_.pipeline_chain_hub_is_tail_flag_)*/0
+  , /*decltype(_impl_.pipeline_equation_is_local_)*/0
   , /*decltype(_impl_.glrc_ilp_pipeline_)*/false
   , /*decltype(_impl_.phase2_share_proxy_node_bandwidth_)*/false
   , /*decltype(_impl_.phase2_ready_only_)*/false
-  , /*decltype(_impl_.pipeline_chain_hub_is_tail_flag_)*/0
-  , /*decltype(_impl_.pipeline_equation_is_local_)*/0
+  , /*decltype(_impl_.glrc_ilp_phase1_partial_)*/false
   , /*decltype(_impl_.pipeline_my_listen_port_)*/0
   , /*decltype(_impl_.pipeline_chain_hub_listen_port_)*/0
   , /*decltype(_impl_.pipeline_shard_global_begin_)*/0
   , /*decltype(_impl_.pipeline_global_shard_count_)*/0
+  , /*decltype(_impl_.phase1_range_offset_)*/0
+  , /*decltype(_impl_.phase1_range_size_)*/0
+  , /*decltype(_impl_.range_commit_parts_)*/0
   , /*decltype(_impl_._cached_size_)*/{}} {}
 struct RecoveryRequestDefaultTypeInternal {
   PROTOBUF_CONSTEXPR RecoveryRequestDefaultTypeInternal()
@@ -825,6 +829,10 @@ const uint32_t TableStruct_proxy_2eproto::offsets[] PROTOBUF_SECTION_VARIABLE(pr
   PROTOBUF_FIELD_OFFSET(::proxy_proto::RecoveryRequest, _impl_.phase2_share_proxy_node_bandwidth_),
   PROTOBUF_FIELD_OFFSET(::proxy_proto::RecoveryRequest, _impl_.phase2_ready_only_),
   PROTOBUF_FIELD_OFFSET(::proxy_proto::RecoveryRequest, _impl_.hybrid_commit_token_),
+  PROTOBUF_FIELD_OFFSET(::proxy_proto::RecoveryRequest, _impl_.glrc_ilp_phase1_partial_),
+  PROTOBUF_FIELD_OFFSET(::proxy_proto::RecoveryRequest, _impl_.phase1_range_offset_),
+  PROTOBUF_FIELD_OFFSET(::proxy_proto::RecoveryRequest, _impl_.phase1_range_size_),
+  PROTOBUF_FIELD_OFFSET(::proxy_proto::RecoveryRequest, _impl_.range_commit_parts_),
   ~0u,  // no _has_bits_
   PROTOBUF_FIELD_OFFSET(::proxy_proto::MultipleRecoveryRequest, _internal_metadata_),
   ~0u,  // no _extensions_
@@ -922,12 +930,12 @@ static const ::_pbi::MigrationSchema schemas[] PROTOBUF_SECTION_VARIABLE(protode
   { 157, -1, -1, sizeof(::proxy_proto::PartialDecodingRequest)},
   { 171, -1, -1, sizeof(::proxy_proto::DegradedReadReply)},
   { 188, -1, -1, sizeof(::proxy_proto::RecoveryRequest)},
-  { 269, -1, -1, sizeof(::proxy_proto::MultipleRecoveryRequest)},
-  { 280, -1, -1, sizeof(::proxy_proto::RecoveryReply)},
-  { 300, -1, -1, sizeof(::proxy_proto::AppendStripeDataPlacement)},
-  { 319, -1, -1, sizeof(::proxy_proto::SetReply)},
-  { 326, -1, -1, sizeof(::proxy_proto::GetReply)},
-  { 333, -1, -1, sizeof(::proxy_proto::StripeAndBlockIDs)},
+  { 273, -1, -1, sizeof(::proxy_proto::MultipleRecoveryRequest)},
+  { 284, -1, -1, sizeof(::proxy_proto::RecoveryReply)},
+  { 304, -1, -1, sizeof(::proxy_proto::AppendStripeDataPlacement)},
+  { 323, -1, -1, sizeof(::proxy_proto::SetReply)},
+  { 330, -1, -1, sizeof(::proxy_proto::GetReply)},
+  { 337, -1, -1, sizeof(::proxy_proto::StripeAndBlockIDs)},
 };
 
 static const ::_pb::Message* const file_default_instances[] = {
@@ -1013,7 +1021,7 @@ const char descriptor_table_protodef_proxy_2eproto[] PROTOBUF_SECTION_VARIABLE(p
   "k_time\030\007 \001(\001\022\033\n\023cross_rack_xor_time\030\010 \001("
   "\001\022\027\n\017grpc_start_time\030\t \001(\001\022\"\n\032data_node_"
   "grpc_notify_time\030\n \001(\001\022!\n\031data_node_grpc"
-  "_start_time\030\013 \001(\001\"\313\022\n\017RecoveryRequest\022\030\n"
+  "_start_time\030\013 \001(\001\"\300\023\n\017RecoveryRequest\022\030\n"
   "\020replaced_node_ip\030\001 \001(\t\022\032\n\022replaced_node"
   "_port\030\002 \001(\005\022\027\n\017failed_block_id\030\003 \001(\005\022\030\n\020"
   "failed_block_key\030\004 \001(\t\022\026\n\016cross_rack_num"
@@ -1072,70 +1080,73 @@ const char descriptor_table_protodef_proxy_2eproto[] PROTOBUF_SECTION_VARIABLE(p
   "lobal_begin\030G \001(\005\022#\n\033pipeline_global_sha"
   "rd_count\030H \001(\005\022)\n!phase2_share_proxy_nod"
   "e_bandwidth\030I \001(\010\022\031\n\021phase2_ready_only\030J"
-  " \001(\010\022\033\n\023hybrid_commit_token\030L \001(\tJ\004\010K\020L\""
-  "\236\001\n\027MultipleRecoveryRequest\022\031\n\021replacing"
-  "_node_ip\030\001 \001(\t\022\033\n\023replacing_node_port\030\002 "
-  "\001(\005\022\030\n\020failed_block_ids\030\003 \003(\005\022\031\n\021failed_"
-  "block_keys\030\004 \003(\t\022\026\n\016cross_rack_num\030\005 \001(\005"
-  "\"\255\003\n\rRecoveryReply\022\032\n\022disk_io_start_time"
-  "\030\001 \001(\001\022\030\n\020disk_io_end_time\030\002 \001(\001\022\032\n\022netw"
-  "ork_start_time\030\003 \001(\001\022\030\n\020network_end_time"
-  "\030\004 \001(\001\022\031\n\021decode_start_time\030\005 \001(\001\022\027\n\017dec"
-  "ode_end_time\030\006 \001(\001\022\027\n\017cross_rack_time\030\007 "
-  "\001(\001\022\033\n\023cross_rack_xor_time\030\010 \001(\001\022\027\n\017grpc"
-  "_start_time\030\t \001(\001\022\"\n\032data_node_grpc_noti"
-  "fy_time\030\n \001(\001\022!\n\031data_node_grpc_start_ti"
-  "me\030\013 \001(\001\022#\n\033dest_data_node_network_time\030"
-  "\014 \001(\001\022#\n\033dest_data_node_disk_io_time\030\r \001"
-  "(\001\022\034\n\024recovery_commit_time\030\016 \001(\001\"\230\002\n\031App"
-  "endStripeDataPlacement\022\013\n\003key\030\001 \001(\t\022\022\n\nc"
-  "luster_id\030\002 \001(\005\022\021\n\tstripe_id\030\003 \001(\005\022\023\n\013ap"
-  "pend_size\030\004 \001(\004\022\022\n\ndatanodeip\030\005 \003(\t\022\024\n\014d"
-  "atanodeport\030\006 \003(\005\022\021\n\tblockkeys\030\007 \003(\t\022\020\n\010"
-  "blockids\030\010 \003(\005\022\017\n\007offsets\030\t \003(\004\022\r\n\005sizes"
-  "\030\n \003(\004\022\027\n\017is_merge_parity\030\013 \001(\010\022\023\n\013appen"
-  "d_mode\030\014 \001(\t\022\025\n\ris_serialized\030\r \001(\010\"\034\n\010S"
-  "etReply\022\020\n\010ifcommit\030\001 \001(\010\"\036\n\010GetReply\022\022\n"
-  "\ngetsuccess\030\001 \001(\010\"\261\001\n\021StripeAndBlockIDs\022"
-  "\021\n\tstripe_id\030\001 \001(\005\022\020\n\010group_id\030\002 \001(\005\022\020\n\010"
-  "clientip\030\003 \001(\t\022\022\n\nclientport\030\004 \001(\005\022\021\n\tbl"
-  "ock_ids\030\005 \003(\005\022\022\n\nblock_keys\030\006 \003(\t\022\023\n\013dat"
-  "anodeips\030\007 \003(\t\022\025\n\rdatanodeports\030\010 \003(\0052\307\t"
-  "\n\014proxyService\022D\n\ncheckalive\022\032.proxy_pro"
-  "to.CheckaliveCMD\032\032.proxy_proto.RequestRe"
-  "sult\022L\n\022encodeAndSetObject\022\037.proxy_proto"
-  ".ObjectAndPlacement\032\025.proxy_proto.SetRep"
-  "ly\022L\n\022decodeAndGetObject\022\037.proxy_proto.O"
-  "bjectAndPlacement\032\025.proxy_proto.GetReply"
-  "\022P\n\014degradedRead\022 .proxy_proto.DegradedR"
-  "eadRequest\032\036.proxy_proto.DegradedReadRep"
-  "ly\022S\n\023degradedRead2Client\022\034.proxy_proto."
-  "RecoveryRequest\032\036.proxy_proto.DegradedRe"
-  "adReply\022Y\n\025degradedReadBreakdown\022 .proxy"
-  "_proto.DegradedReadRequest\032\036.proxy_proto"
-  ".DegradedReadReply\022\\\n\034degradedRead2Clien"
-  "tBreakdown\022\034.proxy_proto.RecoveryRequest"
-  "\032\036.proxy_proto.DegradedReadReply\022X\n\035degr"
-  "adedReadWithBlockStripeID\022 .proxy_proto."
-  "DegradedReadRequest\032\025.proxy_proto.GetRep"
-  "ly\022V\n\017partialDecoding\022#.proxy_proto.Part"
-  "ialDecodingRequest\032\036.proxy_proto.Degrade"
-  "dReadReply\022D\n\010recovery\022\034.proxy_proto.Rec"
-  "overyRequest\032\032.proxy_proto.RecoveryReply"
-  "\022M\n\021recoveryBreakdown\022\034.proxy_proto.Reco"
-  "veryRequest\032\032.proxy_proto.RecoveryReply\022"
-  "O\n\020multipleRecovery\022$.proxy_proto.Multip"
-  "leRecoveryRequest\032\025.proxy_proto.GetReply"
-  "\022\?\n\013deleteBlock\022\031.proxy_proto.NodeAndBlo"
-  "ck\032\025.proxy_proto.DelReply\022X\n\027scheduleApp"
-  "end2Datanode\022&.proxy_proto.AppendStripeD"
-  "ataPlacement\032\025.proxy_proto.SetReply\022B\n\tg"
-  "etBlocks\022\036.proxy_proto.StripeAndBlockIDs"
-  "\032\025.proxy_proto.GetReplyb\006proto3"
+  " \001(\010\022\033\n\023hybrid_commit_token\030L \001(\t\022\037\n\027glr"
+  "c_ilp_phase1_partial\030M \001(\010\022\033\n\023phase1_ran"
+  "ge_offset\030N \001(\005\022\031\n\021phase1_range_size\030O \001"
+  "(\005\022\032\n\022range_commit_parts\030P \001(\005J\004\010K\020L\"\236\001\n"
+  "\027MultipleRecoveryRequest\022\031\n\021replacing_no"
+  "de_ip\030\001 \001(\t\022\033\n\023replacing_node_port\030\002 \001(\005"
+  "\022\030\n\020failed_block_ids\030\003 \003(\005\022\031\n\021failed_blo"
+  "ck_keys\030\004 \003(\t\022\026\n\016cross_rack_num\030\005 \001(\005\"\255\003"
+  "\n\rRecoveryReply\022\032\n\022disk_io_start_time\030\001 "
+  "\001(\001\022\030\n\020disk_io_end_time\030\002 \001(\001\022\032\n\022network"
+  "_start_time\030\003 \001(\001\022\030\n\020network_end_time\030\004 "
+  "\001(\001\022\031\n\021decode_start_time\030\005 \001(\001\022\027\n\017decode"
+  "_end_time\030\006 \001(\001\022\027\n\017cross_rack_time\030\007 \001(\001"
+  "\022\033\n\023cross_rack_xor_time\030\010 \001(\001\022\027\n\017grpc_st"
+  "art_time\030\t \001(\001\022\"\n\032data_node_grpc_notify_"
+  "time\030\n \001(\001\022!\n\031data_node_grpc_start_time\030"
+  "\013 \001(\001\022#\n\033dest_data_node_network_time\030\014 \001"
+  "(\001\022#\n\033dest_data_node_disk_io_time\030\r \001(\001\022"
+  "\034\n\024recovery_commit_time\030\016 \001(\001\"\230\002\n\031Append"
+  "StripeDataPlacement\022\013\n\003key\030\001 \001(\t\022\022\n\nclus"
+  "ter_id\030\002 \001(\005\022\021\n\tstripe_id\030\003 \001(\005\022\023\n\013appen"
+  "d_size\030\004 \001(\004\022\022\n\ndatanodeip\030\005 \003(\t\022\024\n\014data"
+  "nodeport\030\006 \003(\005\022\021\n\tblockkeys\030\007 \003(\t\022\020\n\010blo"
+  "ckids\030\010 \003(\005\022\017\n\007offsets\030\t \003(\004\022\r\n\005sizes\030\n "
+  "\003(\004\022\027\n\017is_merge_parity\030\013 \001(\010\022\023\n\013append_m"
+  "ode\030\014 \001(\t\022\025\n\ris_serialized\030\r \001(\010\"\034\n\010SetR"
+  "eply\022\020\n\010ifcommit\030\001 \001(\010\"\036\n\010GetReply\022\022\n\nge"
+  "tsuccess\030\001 \001(\010\"\261\001\n\021StripeAndBlockIDs\022\021\n\t"
+  "stripe_id\030\001 \001(\005\022\020\n\010group_id\030\002 \001(\005\022\020\n\010cli"
+  "entip\030\003 \001(\t\022\022\n\nclientport\030\004 \001(\005\022\021\n\tblock"
+  "_ids\030\005 \003(\005\022\022\n\nblock_keys\030\006 \003(\t\022\023\n\013datano"
+  "deips\030\007 \003(\t\022\025\n\rdatanodeports\030\010 \003(\0052\307\t\n\014p"
+  "roxyService\022D\n\ncheckalive\022\032.proxy_proto."
+  "CheckaliveCMD\032\032.proxy_proto.RequestResul"
+  "t\022L\n\022encodeAndSetObject\022\037.proxy_proto.Ob"
+  "jectAndPlacement\032\025.proxy_proto.SetReply\022"
+  "L\n\022decodeAndGetObject\022\037.proxy_proto.Obje"
+  "ctAndPlacement\032\025.proxy_proto.GetReply\022P\n"
+  "\014degradedRead\022 .proxy_proto.DegradedRead"
+  "Request\032\036.proxy_proto.DegradedReadReply\022"
+  "S\n\023degradedRead2Client\022\034.proxy_proto.Rec"
+  "overyRequest\032\036.proxy_proto.DegradedReadR"
+  "eply\022Y\n\025degradedReadBreakdown\022 .proxy_pr"
+  "oto.DegradedReadRequest\032\036.proxy_proto.De"
+  "gradedReadReply\022\\\n\034degradedRead2ClientBr"
+  "eakdown\022\034.proxy_proto.RecoveryRequest\032\036."
+  "proxy_proto.DegradedReadReply\022X\n\035degrade"
+  "dReadWithBlockStripeID\022 .proxy_proto.Deg"
+  "radedReadRequest\032\025.proxy_proto.GetReply\022"
+  "V\n\017partialDecoding\022#.proxy_proto.Partial"
+  "DecodingRequest\032\036.proxy_proto.DegradedRe"
+  "adReply\022D\n\010recovery\022\034.proxy_proto.Recove"
+  "ryRequest\032\032.proxy_proto.RecoveryReply\022M\n"
+  "\021recoveryBreakdown\022\034.proxy_proto.Recover"
+  "yRequest\032\032.proxy_proto.RecoveryReply\022O\n\020"
+  "multipleRecovery\022$.proxy_proto.MultipleR"
+  "ecoveryRequest\032\025.proxy_proto.GetReply\022\?\n"
+  "\013deleteBlock\022\031.proxy_proto.NodeAndBlock\032"
+  "\025.proxy_proto.DelReply\022X\n\027scheduleAppend"
+  "2Datanode\022&.proxy_proto.AppendStripeData"
+  "Placement\032\025.proxy_proto.SetReply\022B\n\tgetB"
+  "locks\022\036.proxy_proto.StripeAndBlockIDs\032\025."
+  "proxy_proto.GetReplyb\006proto3"
   ;
 static ::_pbi::once_flag descriptor_table_proxy_2eproto_once;
 const ::_pbi::DescriptorTable descriptor_table_proxy_2eproto = {
-    false, false, 6991, descriptor_table_protodef_proxy_2eproto,
+    false, false, 7108, descriptor_table_protodef_proxy_2eproto,
     "proxy.proto",
     &descriptor_table_proxy_2eproto_once, nullptr, 0, 23,
     schemas, file_default_instances, TableStruct_proxy_2eproto::offsets,
@@ -6951,15 +6962,19 @@ RecoveryRequest::RecoveryRequest(const RecoveryRequest& from)
     , decltype(_impl_.pipeline_hub_proxy_port_){}
     , decltype(_impl_.pipeline_local_failed_block_id_){}
     , decltype(_impl_.pipeline_local_replaced_node_port_){}
+    , decltype(_impl_.pipeline_chain_hub_is_tail_flag_){}
+    , decltype(_impl_.pipeline_equation_is_local_){}
     , decltype(_impl_.glrc_ilp_pipeline_){}
     , decltype(_impl_.phase2_share_proxy_node_bandwidth_){}
     , decltype(_impl_.phase2_ready_only_){}
-    , decltype(_impl_.pipeline_chain_hub_is_tail_flag_){}
-    , decltype(_impl_.pipeline_equation_is_local_){}
+    , decltype(_impl_.glrc_ilp_phase1_partial_){}
     , decltype(_impl_.pipeline_my_listen_port_){}
     , decltype(_impl_.pipeline_chain_hub_listen_port_){}
     , decltype(_impl_.pipeline_shard_global_begin_){}
     , decltype(_impl_.pipeline_global_shard_count_){}
+    , decltype(_impl_.phase1_range_offset_){}
+    , decltype(_impl_.phase1_range_size_){}
+    , decltype(_impl_.range_commit_parts_){}
     , /*decltype(_impl_._cached_size_)*/{}};
 
   _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
@@ -7020,8 +7035,8 @@ RecoveryRequest::RecoveryRequest(const RecoveryRequest& from)
       _this->GetArenaForAllocation());
   }
   ::memcpy(&_impl_.replaced_node_port_, &from._impl_.replaced_node_port_,
-    static_cast<size_t>(reinterpret_cast<char*>(&_impl_.pipeline_global_shard_count_) -
-    reinterpret_cast<char*>(&_impl_.replaced_node_port_)) + sizeof(_impl_.pipeline_global_shard_count_));
+    static_cast<size_t>(reinterpret_cast<char*>(&_impl_.range_commit_parts_) -
+    reinterpret_cast<char*>(&_impl_.replaced_node_port_)) + sizeof(_impl_.range_commit_parts_));
   // @@protoc_insertion_point(copy_constructor:proxy_proto.RecoveryRequest)
 }
 
@@ -7118,15 +7133,19 @@ inline void RecoveryRequest::SharedCtor(
     , decltype(_impl_.pipeline_hub_proxy_port_){0}
     , decltype(_impl_.pipeline_local_failed_block_id_){0}
     , decltype(_impl_.pipeline_local_replaced_node_port_){0}
+    , decltype(_impl_.pipeline_chain_hub_is_tail_flag_){0}
+    , decltype(_impl_.pipeline_equation_is_local_){0}
     , decltype(_impl_.glrc_ilp_pipeline_){false}
     , decltype(_impl_.phase2_share_proxy_node_bandwidth_){false}
     , decltype(_impl_.phase2_ready_only_){false}
-    , decltype(_impl_.pipeline_chain_hub_is_tail_flag_){0}
-    , decltype(_impl_.pipeline_equation_is_local_){0}
+    , decltype(_impl_.glrc_ilp_phase1_partial_){false}
     , decltype(_impl_.pipeline_my_listen_port_){0}
     , decltype(_impl_.pipeline_chain_hub_listen_port_){0}
     , decltype(_impl_.pipeline_shard_global_begin_){0}
     , decltype(_impl_.pipeline_global_shard_count_){0}
+    , decltype(_impl_.phase1_range_offset_){0}
+    , decltype(_impl_.phase1_range_size_){0}
+    , decltype(_impl_.range_commit_parts_){0}
     , /*decltype(_impl_._cached_size_)*/{}
   };
   _impl_.replaced_node_ip_.InitDefault();
@@ -7261,8 +7280,8 @@ void RecoveryRequest::Clear() {
   _impl_.pipeline_hub_block_key_.ClearToEmpty();
   _impl_.hybrid_commit_token_.ClearToEmpty();
   ::memset(&_impl_.replaced_node_port_, 0, static_cast<size_t>(
-      reinterpret_cast<char*>(&_impl_.pipeline_global_shard_count_) -
-      reinterpret_cast<char*>(&_impl_.replaced_node_port_)) + sizeof(_impl_.pipeline_global_shard_count_));
+      reinterpret_cast<char*>(&_impl_.range_commit_parts_) -
+      reinterpret_cast<char*>(&_impl_.replaced_node_port_)) + sizeof(_impl_.range_commit_parts_));
   _internal_metadata_.Clear<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
 }
 
@@ -8022,6 +8041,38 @@ const char* RecoveryRequest::_InternalParse(const char* ptr, ::_pbi::ParseContex
         } else
           goto handle_unusual;
         continue;
+      // bool glrc_ilp_phase1_partial = 77;
+      case 77:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 104)) {
+          _impl_.glrc_ilp_phase1_partial_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint64(&ptr);
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      // int32 phase1_range_offset = 78;
+      case 78:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 112)) {
+          _impl_.phase1_range_offset_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint32(&ptr);
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      // int32 phase1_range_size = 79;
+      case 79:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 120)) {
+          _impl_.phase1_range_size_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint32(&ptr);
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
+      // int32 range_commit_parts = 80;
+      case 80:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<uint8_t>(tag) == 128)) {
+          _impl_.range_commit_parts_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint32(&ptr);
+          CHK_(ptr);
+        } else
+          goto handle_unusual;
+        continue;
       default:
         goto handle_unusual;
     }  // switch
@@ -8633,6 +8684,30 @@ uint8_t* RecoveryRequest::_InternalSerialize(
       "proxy_proto.RecoveryRequest.hybrid_commit_token");
     target = stream->WriteStringMaybeAliased(
         76, this->_internal_hybrid_commit_token(), target);
+  }
+
+  // bool glrc_ilp_phase1_partial = 77;
+  if (this->_internal_glrc_ilp_phase1_partial() != 0) {
+    target = stream->EnsureSpace(target);
+    target = ::_pbi::WireFormatLite::WriteBoolToArray(77, this->_internal_glrc_ilp_phase1_partial(), target);
+  }
+
+  // int32 phase1_range_offset = 78;
+  if (this->_internal_phase1_range_offset() != 0) {
+    target = stream->EnsureSpace(target);
+    target = ::_pbi::WireFormatLite::WriteInt32ToArray(78, this->_internal_phase1_range_offset(), target);
+  }
+
+  // int32 phase1_range_size = 79;
+  if (this->_internal_phase1_range_size() != 0) {
+    target = stream->EnsureSpace(target);
+    target = ::_pbi::WireFormatLite::WriteInt32ToArray(79, this->_internal_phase1_range_size(), target);
+  }
+
+  // int32 range_commit_parts = 80;
+  if (this->_internal_range_commit_parts() != 0) {
+    target = stream->EnsureSpace(target);
+    target = ::_pbi::WireFormatLite::WriteInt32ToArray(80, this->_internal_range_commit_parts(), target);
   }
 
   if (PROTOBUF_PREDICT_FALSE(_internal_metadata_.have_unknown_fields())) {
@@ -9261,6 +9336,20 @@ size_t RecoveryRequest::ByteSizeLong() const {
         this->_internal_pipeline_local_replaced_node_port());
   }
 
+  // int32 pipeline_chain_hub_is_tail_flag = 63;
+  if (this->_internal_pipeline_chain_hub_is_tail_flag() != 0) {
+    total_size += 2 +
+      ::_pbi::WireFormatLite::Int32Size(
+        this->_internal_pipeline_chain_hub_is_tail_flag());
+  }
+
+  // int32 pipeline_equation_is_local = 64;
+  if (this->_internal_pipeline_equation_is_local() != 0) {
+    total_size += 2 +
+      ::_pbi::WireFormatLite::Int32Size(
+        this->_internal_pipeline_equation_is_local());
+  }
+
   // bool glrc_ilp_pipeline = 36;
   if (this->_internal_glrc_ilp_pipeline() != 0) {
     total_size += 2 + 1;
@@ -9276,18 +9365,9 @@ size_t RecoveryRequest::ByteSizeLong() const {
     total_size += 2 + 1;
   }
 
-  // int32 pipeline_chain_hub_is_tail_flag = 63;
-  if (this->_internal_pipeline_chain_hub_is_tail_flag() != 0) {
-    total_size += 2 +
-      ::_pbi::WireFormatLite::Int32Size(
-        this->_internal_pipeline_chain_hub_is_tail_flag());
-  }
-
-  // int32 pipeline_equation_is_local = 64;
-  if (this->_internal_pipeline_equation_is_local() != 0) {
-    total_size += 2 +
-      ::_pbi::WireFormatLite::Int32Size(
-        this->_internal_pipeline_equation_is_local());
+  // bool glrc_ilp_phase1_partial = 77;
+  if (this->_internal_glrc_ilp_phase1_partial() != 0) {
+    total_size += 2 + 1;
   }
 
   // int32 pipeline_my_listen_port = 68;
@@ -9316,6 +9396,27 @@ size_t RecoveryRequest::ByteSizeLong() const {
     total_size += 2 +
       ::_pbi::WireFormatLite::Int32Size(
         this->_internal_pipeline_global_shard_count());
+  }
+
+  // int32 phase1_range_offset = 78;
+  if (this->_internal_phase1_range_offset() != 0) {
+    total_size += 2 +
+      ::_pbi::WireFormatLite::Int32Size(
+        this->_internal_phase1_range_offset());
+  }
+
+  // int32 phase1_range_size = 79;
+  if (this->_internal_phase1_range_size() != 0) {
+    total_size += 2 +
+      ::_pbi::WireFormatLite::Int32Size(
+        this->_internal_phase1_range_size());
+  }
+
+  // int32 range_commit_parts = 80;
+  if (this->_internal_range_commit_parts() != 0) {
+    total_size += 2 +
+      ::_pbi::WireFormatLite::Int32Size(
+        this->_internal_range_commit_parts());
   }
 
   return MaybeComputeUnknownFieldsSize(total_size, &_impl_._cached_size_);
@@ -9470,6 +9571,12 @@ void RecoveryRequest::MergeImpl(::PROTOBUF_NAMESPACE_ID::Message& to_msg, const 
   if (from._internal_pipeline_local_replaced_node_port() != 0) {
     _this->_internal_set_pipeline_local_replaced_node_port(from._internal_pipeline_local_replaced_node_port());
   }
+  if (from._internal_pipeline_chain_hub_is_tail_flag() != 0) {
+    _this->_internal_set_pipeline_chain_hub_is_tail_flag(from._internal_pipeline_chain_hub_is_tail_flag());
+  }
+  if (from._internal_pipeline_equation_is_local() != 0) {
+    _this->_internal_set_pipeline_equation_is_local(from._internal_pipeline_equation_is_local());
+  }
   if (from._internal_glrc_ilp_pipeline() != 0) {
     _this->_internal_set_glrc_ilp_pipeline(from._internal_glrc_ilp_pipeline());
   }
@@ -9479,11 +9586,8 @@ void RecoveryRequest::MergeImpl(::PROTOBUF_NAMESPACE_ID::Message& to_msg, const 
   if (from._internal_phase2_ready_only() != 0) {
     _this->_internal_set_phase2_ready_only(from._internal_phase2_ready_only());
   }
-  if (from._internal_pipeline_chain_hub_is_tail_flag() != 0) {
-    _this->_internal_set_pipeline_chain_hub_is_tail_flag(from._internal_pipeline_chain_hub_is_tail_flag());
-  }
-  if (from._internal_pipeline_equation_is_local() != 0) {
-    _this->_internal_set_pipeline_equation_is_local(from._internal_pipeline_equation_is_local());
+  if (from._internal_glrc_ilp_phase1_partial() != 0) {
+    _this->_internal_set_glrc_ilp_phase1_partial(from._internal_glrc_ilp_phase1_partial());
   }
   if (from._internal_pipeline_my_listen_port() != 0) {
     _this->_internal_set_pipeline_my_listen_port(from._internal_pipeline_my_listen_port());
@@ -9496,6 +9600,15 @@ void RecoveryRequest::MergeImpl(::PROTOBUF_NAMESPACE_ID::Message& to_msg, const 
   }
   if (from._internal_pipeline_global_shard_count() != 0) {
     _this->_internal_set_pipeline_global_shard_count(from._internal_pipeline_global_shard_count());
+  }
+  if (from._internal_phase1_range_offset() != 0) {
+    _this->_internal_set_phase1_range_offset(from._internal_phase1_range_offset());
+  }
+  if (from._internal_phase1_range_size() != 0) {
+    _this->_internal_set_phase1_range_size(from._internal_phase1_range_size());
+  }
+  if (from._internal_range_commit_parts() != 0) {
+    _this->_internal_set_range_commit_parts(from._internal_range_commit_parts());
   }
   _this->_internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
 }
@@ -9577,8 +9690,8 @@ void RecoveryRequest::InternalSwap(RecoveryRequest* other) {
       &other->_impl_.hybrid_commit_token_, rhs_arena
   );
   ::PROTOBUF_NAMESPACE_ID::internal::memswap<
-      PROTOBUF_FIELD_OFFSET(RecoveryRequest, _impl_.pipeline_global_shard_count_)
-      + sizeof(RecoveryRequest::_impl_.pipeline_global_shard_count_)
+      PROTOBUF_FIELD_OFFSET(RecoveryRequest, _impl_.range_commit_parts_)
+      + sizeof(RecoveryRequest::_impl_.range_commit_parts_)
       - PROTOBUF_FIELD_OFFSET(RecoveryRequest, _impl_.replaced_node_port_)>(
           reinterpret_cast<char*>(&_impl_.replaced_node_port_),
           reinterpret_cast<char*>(&other->_impl_.replaced_node_port_));

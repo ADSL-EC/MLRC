@@ -13,8 +13,12 @@
 #include "link_bandwidth.h"
 #include "recovery_stream.h"
 #include <chrono>
+#include <condition_variable>
 #include <cstdlib>
+#include <cstring>
+#include <mutex>
 #include <atomic>
+#include <sys/socket.h>
 
 namespace {
 std::atomic<uint64_t> g_recovery_stream_epoch{1};
@@ -2461,6 +2465,481 @@ namespace ECProject
     return grpc::Status::OK;
   }
 
+  bool ProxyImpl::hmbrConvShardRecovery(const proxy_proto::RecoveryRequest *recovery_request,
+                                       proxy_proto::RecoveryReply *response,
+                                       std::string *error_message)
+  {
+    auto fail = [&](const std::string &message) {
+      if (error_message)
+        *error_message = message;
+      std::cerr << "[Proxy" << m_self_cluster_id << "][HMBR phase1] " << message << std::endl;
+      return false;
+    };
+
+    const auto start = std::chrono::high_resolution_clock::now();
+    const int block_size = m_sys_config->BlockSize;
+    const int shard_count_total = m_sys_config->GlrcShardCount;
+    const int range_offset = recovery_request->phase1_range_offset();
+    const int range_size = recovery_request->phase1_range_size();
+    const int helper_n = recovery_request->datanodeip_size();
+    const int failed_n = recovery_request->failed_block_ids_size();
+    if (shard_count_total <= 0 || block_size % shard_count_total != 0)
+      return fail("block size is not divisible by GlrcShardCount");
+    const int stripe_byte_len = block_size / shard_count_total;
+    if (helper_n <= 0 || failed_n <= 0 || range_offset < 0 || range_size <= 0 ||
+        range_offset + range_size > block_size || range_offset % stripe_byte_len != 0 ||
+        range_size % stripe_byte_len != 0)
+      return fail("invalid conventional shard range");
+    const int local_shard_count = range_size / stripe_byte_len;
+    if (recovery_request->selected_equation_indices_size() != failed_n)
+      return fail("selected_equation_indices size mismatch");
+
+    std::vector<int> failed_ids(failed_n);
+    std::vector<int> eq_indices(failed_n);
+    std::vector<int> block_idxs(helper_n);
+    for (int i = 0; i < failed_n; i++)
+    {
+      failed_ids[i] = recovery_request->failed_block_ids(i);
+      eq_indices[i] = recovery_request->selected_equation_indices(i);
+    }
+    for (int i = 0; i < helper_n; i++)
+      block_idxs[i] = recovery_request->blockids(i);
+
+    std::vector<unsigned char> decode_inverse;
+    std::vector<std::vector<int>> eq_helper_indices;
+    std::vector<std::vector<unsigned char>> eq_helper_coefs;
+    if (!glrc_ilp_prepare_helper_decode(m_sys_config->k, m_sys_config->r, m_sys_config->z, block_idxs, failed_ids,
+                                        eq_indices, decode_inverse, eq_helper_indices, eq_helper_coefs))
+      return fail("prepare helper decode failed");
+    std::vector<std::vector<unsigned char>> eq_helper_g_tbls(failed_n);
+    for (int ei = 0; ei < failed_n; ei++)
+    {
+      const int term_count = static_cast<int>(eq_helper_coefs[ei].size());
+      eq_helper_g_tbls[ei].resize(static_cast<size_t>(term_count) * 32);
+      if (term_count > 0)
+        ec_init_tables(term_count, 1, eq_helper_coefs[ei].data(), eq_helper_g_tbls[ei].data());
+    }
+    std::vector<unsigned char> inv_g_tbls(static_cast<size_t>(failed_n) * static_cast<size_t>(failed_n) * 32);
+    ec_init_tables(failed_n, failed_n, decode_inverse.data(), inv_g_tbls.data());
+
+    std::vector<char *> helper_bufs(helper_n, nullptr);
+    std::vector<unsigned char *> recovered(failed_n, nullptr);
+    auto free_bufs = [&]() {
+      for (char *p : helper_bufs)
+        free_aligned_buf(p);
+      for (unsigned char *p : recovered)
+        free_aligned_buf(p);
+    };
+    for (int i = 0; i < helper_n; i++)
+    {
+      helper_bufs[i] = static_cast<char *>(std::aligned_alloc(32, static_cast<size_t>(range_size)));
+      if (helper_bufs[i] == nullptr)
+      {
+        free_bufs();
+        return fail("helper buffer allocation failed");
+      }
+      std::memset(helper_bufs[i], 0, static_cast<size_t>(range_size));
+    }
+    for (int i = 0; i < failed_n; i++)
+    {
+      recovered[i] = static_cast<unsigned char *>(std::aligned_alloc(32, static_cast<size_t>(range_size)));
+      if (recovered[i] == nullptr)
+      {
+        free_bufs();
+        return fail("recovered buffer allocation failed");
+      }
+      std::memset(recovered[i], 0, static_cast<size_t>(range_size));
+    }
+
+    size_t remote_ingress_bytes = 0;
+    for (int i = 0; i < helper_n; i++)
+    {
+      if (!isLocalDatanode(recovery_request->datanodeip(i).c_str(), recovery_request->datanodeport(i)))
+        remote_ingress_bytes += static_cast<size_t>(range_size);
+    }
+    size_t shared_ingress_bytes = remote_ingress_bytes;
+    if (recovery_request->replaced_node_ips_size() > 0 &&
+        isLocalDatanode(recovery_request->replaced_node_ips(0).c_str(),
+                        recovery_request->replaced_node_ports(0)) &&
+        range_offset > 0)
+      shared_ingress_bytes += static_cast<size_t>(range_offset);
+    const double shared_floor_sec =
+        node_block_transfer_seconds(shared_ingress_bytes, m_sys_config->NodeBlockBandwidthMBps);
+    const size_t prefix_bytes = shared_ingress_bytes - remote_ingress_bytes;
+
+    std::atomic<bool> failed{false};
+    std::mutex shard_mu;
+    std::condition_variable shard_cv;
+    std::vector<int> shard_arrived(static_cast<size_t>(local_shard_count), 0);
+    std::vector<std::thread> readers;
+
+    struct WriteStream
+    {
+      asio::io_context io;
+      asio::ip::tcp::socket socket{io};
+      grpc::ClientContext grpc_context;
+      datanode_proto::MergeParityInfo recovery_info;
+      datanode_proto::RequestResult recovery_result;
+      grpc::Status grpc_status;
+      std::thread grpc_thread;
+      std::thread writer_thread;
+      std::mutex mu;
+      std::condition_variable cv;
+      std::vector<char> ready;
+      int next_shard = 0;
+      bool producer_done = false;
+      bool failed = false;
+      double network_time = 0.0;
+    };
+    std::vector<std::unique_ptr<WriteStream>> writers(static_cast<size_t>(failed_n));
+
+    std::thread floor_thread;
+    if (shared_floor_sec > 0.0)
+    {
+      const double elapsed_at_floor =
+          std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+      const double floor_sec = shared_floor_sec;
+      floor_thread = std::thread([floor_sec, elapsed_at_floor]() {
+        sleep_for_bandwidth_remainder(floor_sec, elapsed_at_floor);
+      });
+    }
+    auto finish_floor = [&]() {
+      if (floor_thread.joinable())
+        floor_thread.join();
+    };
+    auto stop_writers = [&]() {
+      failed.store(true);
+      shard_cv.notify_all();
+      for (auto &ws : writers)
+      {
+        if (!ws)
+          continue;
+        {
+          std::lock_guard<std::mutex> lock(ws->mu);
+          ws->producer_done = true;
+          ws->failed = true;
+        }
+        ws->cv.notify_all();
+        ws->grpc_context.TryCancel();
+      }
+      for (auto &ws : writers)
+      {
+        if (!ws)
+          continue;
+        if (ws->writer_thread.joinable())
+          ws->writer_thread.join();
+        if (ws->grpc_thread.joinable())
+          ws->grpc_thread.join();
+      }
+    };
+
+    for (int target = 0; target < failed_n; target++)
+    {
+      auto ws = std::make_unique<WriteStream>();
+      ws->ready.assign(static_cast<size_t>(local_shard_count), 0);
+      const std::string rep_ip = recovery_request->replaced_node_ips(target);
+      const int rep_port = recovery_request->replaced_node_ports(target);
+      const std::string node_ip_port = rep_ip + ":" + std::to_string(rep_port);
+      auto dn_it = m_datanode_ptrs.find(node_ip_port);
+      if (dn_it == m_datanode_ptrs.end() || !dn_it->second)
+      {
+        stop_writers();
+        finish_floor();
+        free_bufs();
+        return fail("write stream datanode stub missing: " + node_ip_port);
+      }
+      ws->recovery_info.set_block_key(recovery_request->failed_block_keys(target));
+      ws->recovery_info.set_block_id(failed_ids[target]);
+      ws->recovery_info.set_recovery_offset(range_offset);
+      ws->recovery_info.set_recovery_size(range_size);
+      ws->recovery_info.set_recovery_defer_fsync(true);
+      ws->recovery_info.set_recovery_commit_token(recovery_request->hybrid_commit_token());
+      ws->recovery_info.set_recovery_commit_parts(recovery_request->range_commit_parts());
+      ws->recovery_info.set_proxy_ip(m_ip);
+      ws->recovery_info.set_proxy_port(m_port);
+      ws->grpc_context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(180));
+      datanode_proto::datanodeService::Stub *dn_stub = dn_it->second.get();
+      WriteStream *raw = ws.get();
+      ws->grpc_thread = std::thread([dn_stub, raw]() {
+        raw->grpc_status =
+            dn_stub->handleRecoveryBreakdown(&raw->grpc_context, raw->recovery_info, &raw->recovery_result);
+      });
+      asio::ip::tcp::resolver resolver(ws->io);
+      asio::error_code connect_ec;
+      asio::connect(ws->socket,
+                    resolver.resolve({rep_ip, std::to_string(rep_port + ECProject::DATANODE_RECOVERY_PORT_SHIFT)}),
+                    connect_ec);
+      if (!connect_ec)
+      {
+        const std::string stream_key =
+            recovery_stream_key(ws->recovery_info.block_key(), ws->recovery_info.block_id(), range_offset,
+                                range_size, ws->recovery_info.recovery_commit_token());
+        write_recovery_stream_key(ws->socket, stream_key, connect_ec);
+      }
+      if (connect_ec)
+      {
+        ws->grpc_context.TryCancel();
+        if (ws->grpc_thread.joinable())
+          ws->grpc_thread.join();
+        stop_writers();
+        finish_floor();
+        free_bufs();
+        return fail("write stream connect failed: " + node_ip_port + " " + connect_ec.message());
+      }
+#if defined(__linux__) || defined(__APPLE__)
+      struct timeval tv;
+      tv.tv_sec = 120;
+      tv.tv_usec = 0;
+      setsockopt(ws->socket.native_handle(), SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+      setsockopt(ws->socket.native_handle(), SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+#endif
+      SharedBandwidthLimiter *write_bw = egressBandwidthForDatanodeWrite(rep_ip.c_str(), rep_port);
+      unsigned char *recovered_buf = recovered[target];
+      ws->writer_thread = std::thread([raw, write_bw, recovered_buf, stripe_byte_len, local_shard_count, &failed,
+                                       &shard_cv]() {
+        while (!failed.load())
+        {
+          int shard = -1;
+          {
+            std::unique_lock<std::mutex> lock(raw->mu);
+            raw->cv.wait(lock, [&]() {
+              return failed.load() || raw->failed ||
+                     (raw->next_shard < local_shard_count &&
+                      raw->ready[static_cast<size_t>(raw->next_shard)] != 0) ||
+                     raw->producer_done;
+            });
+            if (failed.load() || raw->failed)
+              break;
+            if (raw->next_shard < local_shard_count && raw->ready[static_cast<size_t>(raw->next_shard)] != 0)
+              shard = raw->next_shard++;
+            else if (raw->producer_done)
+              break;
+          }
+          if (shard < 0)
+            continue;
+          asio::error_code write_ec;
+          const auto write_begin = std::chrono::steady_clock::now();
+          tcp_write_with_shared_bandwidth(
+              raw->socket,
+              reinterpret_cast<const char *>(recovered_buf + static_cast<size_t>(shard) * stripe_byte_len),
+              static_cast<size_t>(stripe_byte_len), write_bw, write_ec);
+          raw->network_time +=
+              std::chrono::duration<double>(std::chrono::steady_clock::now() - write_begin).count();
+          if (write_ec)
+          {
+            raw->failed = true;
+            failed.store(true);
+            raw->cv.notify_all();
+            shard_cv.notify_all();
+            break;
+          }
+        }
+        asio::error_code ignore_ec;
+        raw->socket.shutdown(asio::ip::tcp::socket::shutdown_both, ignore_ec);
+        raw->socket.close(ignore_ec);
+      });
+      writers[static_cast<size_t>(target)] = std::move(ws);
+    }
+
+    readers.reserve(static_cast<size_t>(helper_n));
+    for (int i = 0; i < helper_n; i++)
+    {
+      readers.emplace_back([&, i]() {
+        grpc::ClientContext context;
+        datanode_proto::GetInfo get_info;
+        datanode_proto::RequestResult result;
+        get_info.set_block_key(recovery_request->blockkeys(i));
+        get_info.set_block_size(block_size);
+        get_info.set_read_offset(range_offset);
+        get_info.set_read_length(range_size);
+        get_info.set_proxy_ip(m_ip);
+        get_info.set_proxy_port(m_port);
+        const std::string node_ip_port =
+            recovery_request->datanodeip(i) + ":" + std::to_string(recovery_request->datanodeport(i));
+        auto dn_it = m_datanode_ptrs.find(node_ip_port);
+        if (dn_it == m_datanode_ptrs.end() || !dn_it->second)
+        {
+          failed.store(true);
+          shard_cv.notify_all();
+          return;
+        }
+        context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(180));
+        grpc::Status stat = dn_it->second->handleGetBreakdown(&context, get_info, &result);
+        if (!stat.ok() || failed.load())
+        {
+          failed.store(true);
+          shard_cv.notify_all();
+          return;
+        }
+        asio::io_context io_context;
+        asio::ip::tcp::resolver resolver(io_context);
+        asio::ip::tcp::socket socket(io_context);
+        asio::error_code connect_ec;
+        asio::connect(socket, resolver.resolve({recovery_request->datanodeip(i), std::to_string(result.data_port())}),
+                      connect_ec);
+        if (connect_ec)
+        {
+          failed.store(true);
+          shard_cv.notify_all();
+          return;
+        }
+#if defined(__linux__) || defined(__APPLE__)
+        struct timeval tv;
+        tv.tv_sec = 120;
+        tv.tv_usec = 0;
+        setsockopt(socket.native_handle(), SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+        setsockopt(socket.native_handle(), SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+#endif
+        // Sink ingress is the background floor. Sleeping on these readers would
+        // charge the suffix bytes twice and stall the next shard behind decode.
+        for (int shard_k = 0; shard_k < local_shard_count && !failed.load(); shard_k++)
+        {
+          asio::error_code read_ec;
+          asio::read(socket,
+                     asio::buffer(helper_bufs[i] + static_cast<size_t>(shard_k) * stripe_byte_len,
+                                  static_cast<size_t>(stripe_byte_len)),
+                     read_ec);
+          if (read_ec)
+          {
+            failed.store(true);
+            shard_cv.notify_all();
+            return;
+          }
+          {
+            std::lock_guard<std::mutex> lock(shard_mu);
+            shard_arrived[static_cast<size_t>(shard_k)]++;
+          }
+          shard_cv.notify_all();
+        }
+        asio::error_code ignore_ec;
+        socket.shutdown(asio::ip::tcp::socket::shutdown_both, ignore_ec);
+        socket.close(ignore_ec);
+      });
+    }
+
+    std::vector<unsigned char *> helper_ptrs(static_cast<size_t>(helper_n));
+    for (int i = 0; i < helper_n; i++)
+      helper_ptrs[i] = reinterpret_cast<unsigned char *>(helper_bufs[i]);
+    std::vector<std::vector<unsigned char>> decode_rhs(
+        failed_n, std::vector<unsigned char>(static_cast<size_t>(stripe_byte_len)));
+    std::vector<std::vector<unsigned char>> shard_recovered(
+        failed_n, std::vector<unsigned char>(static_cast<size_t>(stripe_byte_len)));
+    double decode_cpu_sec = 0.0;
+    bool decode_ok = true;
+    auto suffix_ready = start;
+    for (int shard_k = 0; shard_k < local_shard_count; shard_k++)
+    {
+      {
+        std::unique_lock<std::mutex> lock(shard_mu);
+        shard_cv.wait(lock, [&]() {
+          return failed.load() || shard_arrived[static_cast<size_t>(shard_k)] >= helper_n;
+        });
+      }
+      if (failed.load())
+      {
+        decode_ok = false;
+        break;
+      }
+      if (shard_k + 1 == local_shard_count)
+        suffix_ready = std::chrono::high_resolution_clock::now();
+      const int stripe_off = range_offset + shard_k * stripe_byte_len;
+      const auto decode_begin = std::chrono::high_resolution_clock::now();
+      const bool one_ok = decode_glrc_ilp_helper_compact_prepared(
+          helper_ptrs.data(), eq_helper_indices, eq_helper_g_tbls, inv_g_tbls, failed_n, range_offset, stripe_off,
+          stripe_byte_len, decode_rhs, shard_recovered);
+      decode_cpu_sec += std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - decode_begin).count();
+      if (!one_ok)
+      {
+        decode_ok = false;
+        failed.store(true);
+        break;
+      }
+      for (int target = 0; target < failed_n; target++)
+      {
+        std::memcpy(recovered[target] + static_cast<size_t>(shard_k) * stripe_byte_len,
+                    shard_recovered[target].data(), static_cast<size_t>(stripe_byte_len));
+        WriteStream *ws = writers[static_cast<size_t>(target)].get();
+        {
+          std::lock_guard<std::mutex> lock(ws->mu);
+          ws->ready[static_cast<size_t>(shard_k)] = 1;
+        }
+        ws->cv.notify_one();
+      }
+    }
+    const double pull_sec = std::chrono::duration<double>(suffix_ready - start).count();
+
+    for (std::thread &reader : readers)
+    {
+      if (reader.joinable())
+        reader.join();
+    }
+    if (failed.load())
+      decode_ok = false;
+
+    double total_write_net = 0.0;
+    double max_write_net = 0.0;
+    double total_write_disk = 0.0;
+    double max_commit_time = 0.0;
+    bool write_ok = decode_ok;
+    for (auto &ws : writers)
+    {
+      if (!ws)
+        continue;
+      {
+        std::lock_guard<std::mutex> lock(ws->mu);
+        ws->producer_done = true;
+        if (!decode_ok)
+          ws->failed = true;
+      }
+      ws->cv.notify_all();
+    }
+    for (auto &ws : writers)
+    {
+      if (!ws)
+        continue;
+      if (ws->writer_thread.joinable())
+        ws->writer_thread.join();
+      if (ws->grpc_thread.joinable())
+        ws->grpc_thread.join();
+      if (!decode_ok || ws->failed || !ws->grpc_status.ok() || !ws->recovery_result.message() ||
+          ws->next_shard != local_shard_count)
+        write_ok = false;
+      total_write_net += ws->network_time;
+      max_write_net = std::max(max_write_net, ws->network_time);
+      total_write_disk += ws->recovery_result.disk_io_end_time() - ws->recovery_result.disk_io_start_time();
+      max_commit_time = std::max(max_commit_time, ws->recovery_result.recovery_commit_time());
+    }
+    finish_floor();
+    const double since_start = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+    std::cout << "[Proxy" << m_self_cluster_id << "][HMBR phase1] pull=" << pull_sec
+              << "s shared_floor=" << shared_floor_sec << "s remote_bytes=" << remote_ingress_bytes
+              << " prefix_bytes=" << prefix_bytes << " helpers=" << helper_n
+              << " shards=" << local_shard_count << std::endl;
+    std::cout << "[Proxy" << m_self_cluster_id << "][HMBR phase1] decode=" << decode_cpu_sec
+              << "s write_net=" << total_write_net << "s write_wall=" << max_write_net
+              << "s commit=" << max_commit_time << "s since_start=" << since_start << "s" << std::endl;
+
+    if (!write_ok)
+    {
+      free_bufs();
+      return fail("shard decode or suffix write failed");
+    }
+
+    const double now_epoch =
+        std::chrono::duration<double>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+    response->set_decode_start_time(now_epoch - decode_cpu_sec);
+    response->set_decode_end_time(now_epoch);
+    response->set_network_start_time(now_epoch - since_start);
+    response->set_network_end_time(now_epoch);
+    response->set_dest_data_node_network_time(total_write_net);
+    response->set_dest_data_node_disk_io_time(total_write_disk);
+    response->set_recovery_commit_time(max_commit_time);
+    response->set_cross_rack_time(0);
+    response->set_cross_rack_xor_time(0);
+    free_bufs();
+    return true;
+  }
+
   grpc::Status ProxyImpl::recoveryBreakdown(
     grpc::ServerContext *context,
     const proxy_proto::RecoveryRequest *recovery_request,
@@ -2522,6 +3001,16 @@ namespace ECProject
         return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
                             "invalid HMBR-LRC conventional range");
       }
+      if (phase1_partial)
+      {
+        std::string hmbr_error;
+        if (!hmbrConvShardRecovery(recovery_request, response, &hmbr_error))
+        {
+          return grpc::Status(grpc::StatusCode::INTERNAL,
+                              hmbr_error.empty() ? "HMBR conventional shard recovery failed" : hmbr_error);
+        }
+        return grpc::Status::OK;
+      }
       // auto status = std::make_shared<std::vector<bool>>(recovery_request->datanodeip_size(), false);
       std::unique_ptr<bool[]> status(new bool[recovery_request->datanodeip_size()]);
       std::fill_n(status.get(), recovery_request->datanodeip_size(), false);
@@ -2573,6 +3062,7 @@ namespace ECProject
       {
         get_threads[i].join();
       }
+      const auto phase1_pull_done = std::chrono::high_resolution_clock::now();
 
       // Phase1 pulls every helper block into one anchor proxy. The helper datanodes
       // have independent egress NICs, but all remote streams contend for this node's
@@ -2588,7 +3078,34 @@ namespace ECProject
           remote_ingress_bytes += static_cast<size_t>(phase1_range_size);
       }
       double phase1_ingress_end = 0.0;
-      if (remote_ingress_bytes > 0)
+      // HMBR conventional center. Helper suffixes are already drained. This
+      // host's NIC also receives its own RP prefix from the pipeline hub, so
+      // the floor is (suffixes + one prefix) / B, credited from the start of
+      // the fetch the way the pipeline hub floor is. Decode overlaps the
+      // remainder; do not account_after_io here. That path credits only the
+      // TCP read (a few milliseconds on a fast NIC) and then sleeps the whole
+      // suffix budget before decode, which stacks to ~2x the shared hotspot.
+      double hmbr_shared_floor_sec = 0.0;
+      size_t hmbr_shared_ingress_bytes = 0;
+      if (remote_ingress_bytes > 0 && phase1_partial)
+      {
+        hmbr_shared_ingress_bytes = remote_ingress_bytes;
+        if (recovery_request->replaced_node_ips_size() > 0 &&
+            isLocalDatanode(recovery_request->replaced_node_ips(0).c_str(),
+                            recovery_request->replaced_node_ports(0)) &&
+            phase1_range_offset > 0)
+          hmbr_shared_ingress_bytes += static_cast<size_t>(phase1_range_offset);
+        hmbr_shared_floor_sec = node_block_transfer_seconds(
+            hmbr_shared_ingress_bytes, m_sys_config->NodeBlockBandwidthMBps);
+        const double pull_sec =
+            std::chrono::duration<double>(phase1_pull_done - START).count();
+        std::cout << "[Proxy" << m_self_cluster_id << "][HMBR phase1] pull=" << pull_sec
+                  << "s shared_floor=" << hmbr_shared_floor_sec
+                  << "s remote_bytes=" << remote_ingress_bytes
+                  << " prefix_bytes=" << (hmbr_shared_ingress_bytes - remote_ingress_bytes)
+                  << " helpers=" << recovery_request->datanodeip_size() << std::endl;
+      }
+      else if (remote_ingress_bytes > 0)
       {
         const double ingress_start =
             *std::min_element(data_node_network_start_time.begin(), data_node_network_start_time.end());
@@ -2660,7 +3177,22 @@ namespace ECProject
 
           std::chrono::high_resolution_clock::time_point t3 = std::chrono::high_resolution_clock::now();
           std::vector<unsigned char *> recovered_ptrs;
-          bool decode_ok =
+          bool decode_ok = false;
+          // The shared-hotspot floor is a deadline, not a sleep that runs
+          // before decode and suffix writeback. Those finish inside the
+          // remainder on this cluster (decode ~0.3s, suffix write ~0.04s,
+          // floor 1.34s).
+          std::thread hmbr_floor_thread;
+          if (phase1_partial && hmbr_shared_floor_sec > 0.0)
+          {
+            const double elapsed_at_floor =
+                std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - START).count();
+            const double floor_sec = hmbr_shared_floor_sec;
+            hmbr_floor_thread = std::thread([floor_sec, elapsed_at_floor]() {
+              sleep_for_bandwidth_remainder(floor_sec, elapsed_at_floor);
+            });
+          }
+          decode_ok =
               phase1_partial
                   ? decode_glrc_ilp_range(m_sys_config->k, m_sys_config->r, m_sys_config->z,
                                           m_sys_config->BlockSize, block_idxs, block_ptrs.data(),
@@ -2677,8 +3209,19 @@ namespace ECProject
           response->set_cross_rack_time(0);
           response->set_cross_rack_xor_time(0);
 
+          auto finish_hmbr_floor = [&]() {
+            if (!hmbr_floor_thread.joinable())
+              return;
+            hmbr_floor_thread.join();
+            phase1_ingress_end =
+                std::chrono::duration<double>(
+                    std::chrono::high_resolution_clock::now().time_since_epoch())
+                    .count();
+            response->set_network_end_time(std::max(response->network_end_time(), phase1_ingress_end));
+          };
           if (!decode_ok)
           {
+            finish_hmbr_floor();
             std::cout << "[Proxy" << m_self_cluster_id << "][gLRC ILP] decode failed!" << std::endl;
             for (unsigned char *p : recovered_ptrs)
               delete[] p;
@@ -2725,15 +3268,26 @@ namespace ECProject
             }
             if (!write_ok)
             {
+              finish_hmbr_floor();
               std::cout << "[Proxy" << m_self_cluster_id << "][gLRC ILP] write back failed!" << std::endl;
               for (unsigned char *p : recovered_ptrs)
                 delete[] p;
               cleanup_recovery_bufs();
               return grpc::Status(grpc::StatusCode::INTERNAL, "gLRC ILP write back failed");
             }
+            finish_hmbr_floor();
             response->set_dest_data_node_network_time(total_write_net);
             response->set_dest_data_node_disk_io_time(total_write_disk);
             response->set_recovery_commit_time(max_commit_time);
+            if (phase1_partial)
+            {
+              const double decode_sec = std::chrono::duration<double>(t4 - t3).count();
+              const double since_start =
+                  std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - START).count();
+              std::cout << "[Proxy" << m_self_cluster_id << "][HMBR phase1] decode=" << decode_sec
+                        << "s write_net=" << total_write_net << "s commit=" << max_commit_time
+                        << "s since_start=" << since_start << "s" << std::endl;
+            }
             for (unsigned char *p : recovered_ptrs)
               delete[] p;
           }

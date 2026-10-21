@@ -4530,6 +4530,16 @@ class RecoveryReply final :
     kHybridHubEgressHotTimeFieldNumber = 28,
     kHybridCommitTimeFieldNumber = 29,
     kPhase2StreamWallTimeFieldNumber = 30,
+    kHmbrRpShardsContinuousFieldNumber = 32,
+    kHmbrRpShardsFieldNumber = 31,
+    kHmbrConvShardsFieldNumber = 33,
+    kHmbrRpEstimatedTimeFieldNumber = 35,
+    kHmbrConvEstimatedTimeFieldNumber = 36,
+    kHmbrConvWallTimeFieldNumber = 37,
+    kHmbrRpWallTimeFieldNumber = 38,
+    kHmbrCommitTimeFieldNumber = 39,
+    kHmbrPSelectTimeFieldNumber = 40,
+    kHmbrConvLanesFieldNumber = 34,
   };
   // repeated string selected_equations = 9;
   int selected_equations_size() const;
@@ -4857,6 +4867,96 @@ class RecoveryReply final :
   void _internal_set_phase2_stream_wall_time(double value);
   public:
 
+  // double hmbr_rp_shards_continuous = 32;
+  void clear_hmbr_rp_shards_continuous();
+  double hmbr_rp_shards_continuous() const;
+  void set_hmbr_rp_shards_continuous(double value);
+  private:
+  double _internal_hmbr_rp_shards_continuous() const;
+  void _internal_set_hmbr_rp_shards_continuous(double value);
+  public:
+
+  // int32 hmbr_rp_shards = 31;
+  void clear_hmbr_rp_shards();
+  int32_t hmbr_rp_shards() const;
+  void set_hmbr_rp_shards(int32_t value);
+  private:
+  int32_t _internal_hmbr_rp_shards() const;
+  void _internal_set_hmbr_rp_shards(int32_t value);
+  public:
+
+  // int32 hmbr_conv_shards = 33;
+  void clear_hmbr_conv_shards();
+  int32_t hmbr_conv_shards() const;
+  void set_hmbr_conv_shards(int32_t value);
+  private:
+  int32_t _internal_hmbr_conv_shards() const;
+  void _internal_set_hmbr_conv_shards(int32_t value);
+  public:
+
+  // double hmbr_rp_estimated_time = 35;
+  void clear_hmbr_rp_estimated_time();
+  double hmbr_rp_estimated_time() const;
+  void set_hmbr_rp_estimated_time(double value);
+  private:
+  double _internal_hmbr_rp_estimated_time() const;
+  void _internal_set_hmbr_rp_estimated_time(double value);
+  public:
+
+  // double hmbr_conv_estimated_time = 36;
+  void clear_hmbr_conv_estimated_time();
+  double hmbr_conv_estimated_time() const;
+  void set_hmbr_conv_estimated_time(double value);
+  private:
+  double _internal_hmbr_conv_estimated_time() const;
+  void _internal_set_hmbr_conv_estimated_time(double value);
+  public:
+
+  // double hmbr_conv_wall_time = 37;
+  void clear_hmbr_conv_wall_time();
+  double hmbr_conv_wall_time() const;
+  void set_hmbr_conv_wall_time(double value);
+  private:
+  double _internal_hmbr_conv_wall_time() const;
+  void _internal_set_hmbr_conv_wall_time(double value);
+  public:
+
+  // double hmbr_rp_wall_time = 38;
+  void clear_hmbr_rp_wall_time();
+  double hmbr_rp_wall_time() const;
+  void set_hmbr_rp_wall_time(double value);
+  private:
+  double _internal_hmbr_rp_wall_time() const;
+  void _internal_set_hmbr_rp_wall_time(double value);
+  public:
+
+  // double hmbr_commit_time = 39;
+  void clear_hmbr_commit_time();
+  double hmbr_commit_time() const;
+  void set_hmbr_commit_time(double value);
+  private:
+  double _internal_hmbr_commit_time() const;
+  void _internal_set_hmbr_commit_time(double value);
+  public:
+
+  // double hmbr_p_select_time = 40;
+  void clear_hmbr_p_select_time();
+  double hmbr_p_select_time() const;
+  void set_hmbr_p_select_time(double value);
+  private:
+  double _internal_hmbr_p_select_time() const;
+  void _internal_set_hmbr_p_select_time(double value);
+  public:
+
+  // int32 hmbr_conv_lanes = 34;
+  void clear_hmbr_conv_lanes();
+  int32_t hmbr_conv_lanes() const;
+  void set_hmbr_conv_lanes(int32_t value);
+  private:
+  int32_t _internal_hmbr_conv_lanes() const;
+  void _internal_set_hmbr_conv_lanes(int32_t value);
+  public:
+
   // @@protoc_insertion_point(class_scope:coordinator_proto.RecoveryReply)
  private:
   class _Internal;
@@ -4897,6 +4997,16 @@ class RecoveryReply final :
     double hybrid_hub_egress_hot_time_;
     double hybrid_commit_time_;
     double phase2_stream_wall_time_;
+    double hmbr_rp_shards_continuous_;
+    int32_t hmbr_rp_shards_;
+    int32_t hmbr_conv_shards_;
+    double hmbr_rp_estimated_time_;
+    double hmbr_conv_estimated_time_;
+    double hmbr_conv_wall_time_;
+    double hmbr_rp_wall_time_;
+    double hmbr_commit_time_;
+    double hmbr_p_select_time_;
+    int32_t hmbr_conv_lanes_;
     mutable ::PROTOBUF_NAMESPACE_ID::internal::CachedSize _cached_size_;
   };
   union { Impl_ _impl_; };
@@ -8567,6 +8677,206 @@ inline void RecoveryReply::_internal_set_phase2_stream_wall_time(double value) {
 inline void RecoveryReply::set_phase2_stream_wall_time(double value) {
   _internal_set_phase2_stream_wall_time(value);
   // @@protoc_insertion_point(field_set:coordinator_proto.RecoveryReply.phase2_stream_wall_time)
+}
+
+// int32 hmbr_rp_shards = 31;
+inline void RecoveryReply::clear_hmbr_rp_shards() {
+  _impl_.hmbr_rp_shards_ = 0;
+}
+inline int32_t RecoveryReply::_internal_hmbr_rp_shards() const {
+  return _impl_.hmbr_rp_shards_;
+}
+inline int32_t RecoveryReply::hmbr_rp_shards() const {
+  // @@protoc_insertion_point(field_get:coordinator_proto.RecoveryReply.hmbr_rp_shards)
+  return _internal_hmbr_rp_shards();
+}
+inline void RecoveryReply::_internal_set_hmbr_rp_shards(int32_t value) {
+  
+  _impl_.hmbr_rp_shards_ = value;
+}
+inline void RecoveryReply::set_hmbr_rp_shards(int32_t value) {
+  _internal_set_hmbr_rp_shards(value);
+  // @@protoc_insertion_point(field_set:coordinator_proto.RecoveryReply.hmbr_rp_shards)
+}
+
+// double hmbr_rp_shards_continuous = 32;
+inline void RecoveryReply::clear_hmbr_rp_shards_continuous() {
+  _impl_.hmbr_rp_shards_continuous_ = 0;
+}
+inline double RecoveryReply::_internal_hmbr_rp_shards_continuous() const {
+  return _impl_.hmbr_rp_shards_continuous_;
+}
+inline double RecoveryReply::hmbr_rp_shards_continuous() const {
+  // @@protoc_insertion_point(field_get:coordinator_proto.RecoveryReply.hmbr_rp_shards_continuous)
+  return _internal_hmbr_rp_shards_continuous();
+}
+inline void RecoveryReply::_internal_set_hmbr_rp_shards_continuous(double value) {
+  
+  _impl_.hmbr_rp_shards_continuous_ = value;
+}
+inline void RecoveryReply::set_hmbr_rp_shards_continuous(double value) {
+  _internal_set_hmbr_rp_shards_continuous(value);
+  // @@protoc_insertion_point(field_set:coordinator_proto.RecoveryReply.hmbr_rp_shards_continuous)
+}
+
+// int32 hmbr_conv_shards = 33;
+inline void RecoveryReply::clear_hmbr_conv_shards() {
+  _impl_.hmbr_conv_shards_ = 0;
+}
+inline int32_t RecoveryReply::_internal_hmbr_conv_shards() const {
+  return _impl_.hmbr_conv_shards_;
+}
+inline int32_t RecoveryReply::hmbr_conv_shards() const {
+  // @@protoc_insertion_point(field_get:coordinator_proto.RecoveryReply.hmbr_conv_shards)
+  return _internal_hmbr_conv_shards();
+}
+inline void RecoveryReply::_internal_set_hmbr_conv_shards(int32_t value) {
+  
+  _impl_.hmbr_conv_shards_ = value;
+}
+inline void RecoveryReply::set_hmbr_conv_shards(int32_t value) {
+  _internal_set_hmbr_conv_shards(value);
+  // @@protoc_insertion_point(field_set:coordinator_proto.RecoveryReply.hmbr_conv_shards)
+}
+
+// int32 hmbr_conv_lanes = 34;
+inline void RecoveryReply::clear_hmbr_conv_lanes() {
+  _impl_.hmbr_conv_lanes_ = 0;
+}
+inline int32_t RecoveryReply::_internal_hmbr_conv_lanes() const {
+  return _impl_.hmbr_conv_lanes_;
+}
+inline int32_t RecoveryReply::hmbr_conv_lanes() const {
+  // @@protoc_insertion_point(field_get:coordinator_proto.RecoveryReply.hmbr_conv_lanes)
+  return _internal_hmbr_conv_lanes();
+}
+inline void RecoveryReply::_internal_set_hmbr_conv_lanes(int32_t value) {
+  
+  _impl_.hmbr_conv_lanes_ = value;
+}
+inline void RecoveryReply::set_hmbr_conv_lanes(int32_t value) {
+  _internal_set_hmbr_conv_lanes(value);
+  // @@protoc_insertion_point(field_set:coordinator_proto.RecoveryReply.hmbr_conv_lanes)
+}
+
+// double hmbr_rp_estimated_time = 35;
+inline void RecoveryReply::clear_hmbr_rp_estimated_time() {
+  _impl_.hmbr_rp_estimated_time_ = 0;
+}
+inline double RecoveryReply::_internal_hmbr_rp_estimated_time() const {
+  return _impl_.hmbr_rp_estimated_time_;
+}
+inline double RecoveryReply::hmbr_rp_estimated_time() const {
+  // @@protoc_insertion_point(field_get:coordinator_proto.RecoveryReply.hmbr_rp_estimated_time)
+  return _internal_hmbr_rp_estimated_time();
+}
+inline void RecoveryReply::_internal_set_hmbr_rp_estimated_time(double value) {
+  
+  _impl_.hmbr_rp_estimated_time_ = value;
+}
+inline void RecoveryReply::set_hmbr_rp_estimated_time(double value) {
+  _internal_set_hmbr_rp_estimated_time(value);
+  // @@protoc_insertion_point(field_set:coordinator_proto.RecoveryReply.hmbr_rp_estimated_time)
+}
+
+// double hmbr_conv_estimated_time = 36;
+inline void RecoveryReply::clear_hmbr_conv_estimated_time() {
+  _impl_.hmbr_conv_estimated_time_ = 0;
+}
+inline double RecoveryReply::_internal_hmbr_conv_estimated_time() const {
+  return _impl_.hmbr_conv_estimated_time_;
+}
+inline double RecoveryReply::hmbr_conv_estimated_time() const {
+  // @@protoc_insertion_point(field_get:coordinator_proto.RecoveryReply.hmbr_conv_estimated_time)
+  return _internal_hmbr_conv_estimated_time();
+}
+inline void RecoveryReply::_internal_set_hmbr_conv_estimated_time(double value) {
+  
+  _impl_.hmbr_conv_estimated_time_ = value;
+}
+inline void RecoveryReply::set_hmbr_conv_estimated_time(double value) {
+  _internal_set_hmbr_conv_estimated_time(value);
+  // @@protoc_insertion_point(field_set:coordinator_proto.RecoveryReply.hmbr_conv_estimated_time)
+}
+
+// double hmbr_conv_wall_time = 37;
+inline void RecoveryReply::clear_hmbr_conv_wall_time() {
+  _impl_.hmbr_conv_wall_time_ = 0;
+}
+inline double RecoveryReply::_internal_hmbr_conv_wall_time() const {
+  return _impl_.hmbr_conv_wall_time_;
+}
+inline double RecoveryReply::hmbr_conv_wall_time() const {
+  // @@protoc_insertion_point(field_get:coordinator_proto.RecoveryReply.hmbr_conv_wall_time)
+  return _internal_hmbr_conv_wall_time();
+}
+inline void RecoveryReply::_internal_set_hmbr_conv_wall_time(double value) {
+  
+  _impl_.hmbr_conv_wall_time_ = value;
+}
+inline void RecoveryReply::set_hmbr_conv_wall_time(double value) {
+  _internal_set_hmbr_conv_wall_time(value);
+  // @@protoc_insertion_point(field_set:coordinator_proto.RecoveryReply.hmbr_conv_wall_time)
+}
+
+// double hmbr_rp_wall_time = 38;
+inline void RecoveryReply::clear_hmbr_rp_wall_time() {
+  _impl_.hmbr_rp_wall_time_ = 0;
+}
+inline double RecoveryReply::_internal_hmbr_rp_wall_time() const {
+  return _impl_.hmbr_rp_wall_time_;
+}
+inline double RecoveryReply::hmbr_rp_wall_time() const {
+  // @@protoc_insertion_point(field_get:coordinator_proto.RecoveryReply.hmbr_rp_wall_time)
+  return _internal_hmbr_rp_wall_time();
+}
+inline void RecoveryReply::_internal_set_hmbr_rp_wall_time(double value) {
+  
+  _impl_.hmbr_rp_wall_time_ = value;
+}
+inline void RecoveryReply::set_hmbr_rp_wall_time(double value) {
+  _internal_set_hmbr_rp_wall_time(value);
+  // @@protoc_insertion_point(field_set:coordinator_proto.RecoveryReply.hmbr_rp_wall_time)
+}
+
+// double hmbr_commit_time = 39;
+inline void RecoveryReply::clear_hmbr_commit_time() {
+  _impl_.hmbr_commit_time_ = 0;
+}
+inline double RecoveryReply::_internal_hmbr_commit_time() const {
+  return _impl_.hmbr_commit_time_;
+}
+inline double RecoveryReply::hmbr_commit_time() const {
+  // @@protoc_insertion_point(field_get:coordinator_proto.RecoveryReply.hmbr_commit_time)
+  return _internal_hmbr_commit_time();
+}
+inline void RecoveryReply::_internal_set_hmbr_commit_time(double value) {
+  
+  _impl_.hmbr_commit_time_ = value;
+}
+inline void RecoveryReply::set_hmbr_commit_time(double value) {
+  _internal_set_hmbr_commit_time(value);
+  // @@protoc_insertion_point(field_set:coordinator_proto.RecoveryReply.hmbr_commit_time)
+}
+
+// double hmbr_p_select_time = 40;
+inline void RecoveryReply::clear_hmbr_p_select_time() {
+  _impl_.hmbr_p_select_time_ = 0;
+}
+inline double RecoveryReply::_internal_hmbr_p_select_time() const {
+  return _impl_.hmbr_p_select_time_;
+}
+inline double RecoveryReply::hmbr_p_select_time() const {
+  // @@protoc_insertion_point(field_get:coordinator_proto.RecoveryReply.hmbr_p_select_time)
+  return _internal_hmbr_p_select_time();
+}
+inline void RecoveryReply::_internal_set_hmbr_p_select_time(double value) {
+  
+  _impl_.hmbr_p_select_time_ = value;
+}
+inline void RecoveryReply::set_hmbr_p_select_time(double value) {
+  _internal_set_hmbr_p_select_time(value);
+  // @@protoc_insertion_point(field_set:coordinator_proto.RecoveryReply.hmbr_p_select_time)
 }
 
 // -------------------------------------------------------------------

@@ -48,7 +48,7 @@
     <NodeBlockBandwidthMBps>125</NodeBlockBandwidthMBps>
 
     <!-- Repair mode: phase1 | phase2 | pipeline | hybrid | hmbr -->
-    <GlrcRepairMode>hybrid</GlrcRepairMode>
+    <GlrcRepairMode>hmbr</GlrcRepairMode>
     <GlrcHybridP>auto</GlrcHybridP>
     <!-- HMBR-LRC: auto balances RP and conventional lanes; integer fixes RP shard count. -->
     <GlrcHmbrP>auto</GlrcHmbrP>
@@ -61,21 +61,21 @@
     <GlrcPipelineWindow>0</GlrcPipelineWindow>
     <GlrcPhase2WriteBack>true</GlrcPhase2WriteBack>
 
-    <!-- Real-system: z=4 gLRC placement groups over 55 storage nodes. -->
+    <!-- Real-system: (28,24,2,2), two local groups over 28 storage nodes. -->
     <DatanodeNumPerCluster>14</DatanodeNumPerCluster>
-    <ClusterNum>4</ClusterNum>
-    <CoordinatorIP>172.16.3.68</CoordinatorIP>
+    <ClusterNum>2</ClusterNum>
+    <CoordinatorIP>172.16.3.15</CoordinatorIP>
     <CoordinatorPort>55555</CoordinatorPort>
-    <ClientIP>172.16.3.75</ClientIP>
+    <ClientIP>172.16.3.248</ClientIP>
     <ClientPort>55555</ClientPort>
 
     <AppendMode>UNILRC_MODE</AppendMode>
     <alpha>2</alpha>
 
     <CodeType>gLRC</CodeType>
-    <!-- n=55: k=48 data, r=3 global parity G, z=4 local parity L; k+r split evenly across z groups -->
-    <k>48</k>
-    <r>3</r>
-    <z>4</z>
+    <!-- n=28: k=24 data, r=2 global parity, z=2 local parity -->
+    <k>24</k>
+    <r>2</r>
+    <z>2</z>
 
 </Configuration>
